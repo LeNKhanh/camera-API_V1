@@ -11,8 +11,8 @@
     "start:debug": "nest start --debug --watch",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings=0",
-    "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d dist/data-source.js",
-    "migration:generate": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:generate -d src/typeorm.config.ts src/migrations/auto-migration",
+  "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/data-source.ts",
+  "migration:generate": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:generate -d src/data-source.ts src/migrations/auto-migration",
     "seed": "ts-node -r tsconfig-paths/register src/seeds/seed.ts"
   },
   "engines": {

@@ -19,6 +19,10 @@ export class Camera {
   @Column({ name: 'rtsp_port', type: 'int', default: 554 })
   rtspPort: number;
 
+  // Cổng SDK (ví dụ Dahua: 37777); để riêng với RTSP
+  @Column({ name: 'sdk_port', type: 'int', nullable: true })
+  sdkPort?: number | null;
+
   @Column({ name: 'onvif_url', type: 'varchar', length: 255, nullable: true })
   onvifUrl?: string | null;
 
@@ -33,6 +37,10 @@ export class Camera {
 
   @Column({ type: 'varchar', length: 20, default: '1080p' })
   resolution: string;
+
+  // Thông tin nhà sản xuất (Dahua/Hikvision/Onvif...)
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  vendor?: string | null;
 
   @Column({ type: 'boolean', default: true })
   enabled: boolean;

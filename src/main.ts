@@ -21,10 +21,41 @@ async function bootstrap() {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
 
-  const port = process.env.PORT || 3000;
-  await app.listen(port);
-  // Log URL để tiện truy cập nhanh
-  console.log(`Camera API listening on http://localhost:${port}`);
+  const preferredPort = parseInt(process.env.PORT || '3000', 10);
+  const autoPort = process.env.AUTO_PORT === '1';
+
+  async function listenWithFallback(startPort: number): Promise<number> {
+    if (!autoPort) {
+      // Không bật fallback: thử port duy nhất
+      await app.listen(startPort);
+      return startPort;
+    }
+    const maxAttempts = 15; // thử tối đa 15 port liên tiếp
+    let port = startPort;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        await app.listen(port);
+        if (port !== startPort) {
+          console.warn(
+            `PORT ${startPort} đã bận (EADDRINUSE) → tự động chuyển sang PORT ${port}. (Bật do AUTO_PORT=1)`,
+          );
+        }
+        return port;
+      } catch (err) {
+        if ((err as any)?.code === 'EADDRINUSE') {
+          port += 1; // thử port kế tiếp
+          continue;
+        }
+        throw err; // lỗi khác: ném ra luôn
+      }
+    }
+    throw new Error(
+      `Không tìm được port trống sau khi thử từ ${startPort} đến ${startPort + maxAttempts - 1}`,
+    );
+  }
+
+  const actualPort = await listenWithFallback(preferredPort);
+  console.log(`Camera API listening on http://localhost:${actualPort}`);
 }
 
 bootstrap();

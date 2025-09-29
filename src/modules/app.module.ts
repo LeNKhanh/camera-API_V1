@@ -10,6 +10,7 @@ import { StreamModule } from './stream/stream.module';
 import { RecordingModule } from './recording/recording.module';
 import { EventModule } from './event/event.module';
 import { SnapshotModule } from './snapshot/snapshot.module';
+import { NetSdkModule } from './netsdk/netsdk.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RolesGuard } from '../common/roles.guard';
@@ -46,6 +47,7 @@ import { Snapshot } from '../typeorm/entities/snapshot.entity';
     RecordingModule,
     EventModule,
     SnapshotModule,
+    NetSdkModule,
   ],
   controllers: [AppController],
   providers: [

@@ -27,8 +27,8 @@ Copy-Item src\.env.example .env
 ```
 
 3) Tạo DB bằng pgAdmin 4
-- Tạo database `camera_db` (hoặc tên khác, nhớ sửa .env)
-- Đảm bảo extension `pgcrypto` có sẵn (để dùng gen_random_uuid) hoặc chuyển sang uuid-ossp.
+- Tạo database `Camera_api` (hoặc tên khác, nhớ sửa .env)
+- Đảm bảo extension `uuid-ossp` hoặc `pgcrypto` có sẵn (để tạo UUID). Có thể chạy lệnh: `CREATE EXTENSION IF NOT EXISTS "uuid-ossp";`
 
 4) Seed tài khoản admin
 ```powershell
@@ -41,6 +41,41 @@ npm run start:dev
 ```
 API chạy tại http://localhost:3000
 
+## Cấu hình Database (PostgreSQL) và Migration
+
+1) Biến môi trường DB (trong `.env`)
+
+```properties
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+2) Tạo DB và extension (tuỳ chọn chạy bằng psql)
+
+```sql
+-- Tạo database nếu chưa có
+CREATE DATABASE "Camera_api";
+
+-- Bật extension UUID (chạy trong database Camera_api)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Hoặc dùng pgcrypto nếu bạn thích
+-- CREATE EXTENSION IF NOT EXISTS pgcrypto;
+```
+
+3) Chạy migration (khuyến nghị cho môi trường staging/production)
+
+```powershell
+# Sinh migration khi thay đổi entity (nếu cần)
+npm run migration:generate
+
+# Áp dụng migration vào DB hiện tại
+npm run migration:run
+```
+
+Ghi chú:
+- Ở môi trường dev bạn có thể để `synchronize=true` cho nhanh, nhưng production nên tắt và chỉ dùng migration.
+- Nếu PowerShell chặn script, xem mục "Khắc phục sự cố" để bật RemoteSigned hoặc dùng cmd.exe.
+
 ## Đăng nhập
 - Sau khi seed: username `admin` / password `admin123`
 - Gọi POST /auth/login -> nhận `accessToken`
@@ -52,11 +87,25 @@ API chạy tại http://localhost:3000
 - Snapshot: POST /snapshots/capture, GET /snapshots?cameraId=..., GET /snapshots/:id
 - Recording: POST /recordings/start, GET /recordings?cameraId=..., GET /recordings/:id
 - Stream (minh hoạ URL): GET /streams/:cameraId/url?protocol=HLS|DASH
+ - NetSDK (PTZ giả lập):
+	 - POST /netsdk/sessions (login tạo session)
+	 - GET /netsdk/sessions (danh sách session)
+	 - GET /netsdk/sessions/:handle (chi tiết session)
+	 - PUT /netsdk/sessions/:handle/ptz (gửi lệnh PTZ)
+	 - DELETE /netsdk/sessions/:handle (logout)
+	 - POST /netsdk/sessions/:handle/snapshots (snapshot – hiện báo không hỗ trợ)
 
 Lưu ý: Stream cần hạ tầng streaming thực tế (SRS/nginx-rtmp/HLS segmenter); service hiện trả về URL mẫu.
 
 ## Lược đồ dữ liệu
 Phần entity TypeORM tương ứng với dump người dùng cung cấp (bảng users, cameras, recordings, snapshots, events). DB dùng quan hệ n-1 tới camera theo khoá ngoại, xoá camera xoá luôn bản ghi liên quan.
+
+Các bổ sung nhỏ để hỗ trợ NetSDK:
+- cameras:
+	- sdk_port (int, nullable): cổng SDK (ví dụ Dahua 37777), khác với rtsp_port.
+	- vendor (varchar, nullable): tên nhà sản xuất (Dahua/Hikvision/Onvif...).
+- recordings:
+	- status mặc định PENDING khi mới tạo, service sẽ cập nhật RUNNING/COMPLETED/FAILED.
 
 ## Ghi chú triển khai
 - TypeORM đang bật synchronize=true cho tiện phát triển. Production nên tắt và dùng migration.
@@ -70,6 +119,9 @@ Phần entity TypeORM tương ứng với dump người dùng cung cấp (bảng
 - Lỗi thiếu module: chạy `npm install` lại.
 - Lỗi connect Postgres: kiểm tra .env (DB_HOST, DB_PORT...), firewall và user/password.
 - FFmpeg lỗi: đảm bảo RTSP hợp lệ, camera có stream, port mở; thử thêm `-rtsp_transport tcp` (đã có sẵn).
+- PowerShell chặn npm.ps1: nếu gặp lỗi "running scripts is disabled", mở PowerShell với quyền người dùng và chạy:
+	- `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+	- Hoặc dùng Command Prompt (cmd.exe) thay vì PowerShell để chạy lệnh npm.
 
 ## Giấy phép
 MIT
@@ -77,7 +129,9 @@ MIT
 ## Cách kiểm tra toàn bộ chức năng hệ thống
 
 Phần này hướng dẫn bạn kiểm thử end-to-end cho tất cả module: Health, Auth, RBAC, Camera, Snapshot, Recording, Event, và Stream. Bạn có thể dùng Postman, Insomnia hoặc curl.
-
+## ID dạng UUID chuẩn RFC
+Đây là UUID (Universally Unique Identifier) dạng chuẩn RFC 4122, gồm 32 ký tự hex và 4 dấu gạch ngang (tổng 36 ký tự) theo mẫu 8-4-4-4-12.
+Ở ví dụ của bạn, nhóm thứ 3 bắt đầu bằng “4” → version 4 (UUID v4, sinh ngẫu nhiên). Nhóm thứ 4 bắt đầu bằng “9” → biến thể RFC 4122.
 ### 0) Chuẩn bị token (đăng nhập)
 1) Seed admin (nếu chưa): `npm run seed`
 2) Đăng nhập:
@@ -193,4 +247,28 @@ Thực tế: sự kiện có thể do pipeline AI/analytics sinh ra và gọi AP
 3) Đổi STREAM_BASE_URL và thử GET stream URL.
 
 ---
-Nếu bạn cần, mình có thể cung cấp luôn Postman Collection JSON để import và test nhanh tất cả endpoint theo thứ tự.
+
+## PTZ nội bộ (phiên bản giản lược – không dùng bridge)
+
+Trước đây phần này mô tả tích hợp NetSDK thông qua một "bridge" native. Hiện tại dự án đã loại bỏ phụ thuộc bridge để giữ mọi thứ thuần REST + TypeScript. Module `netsdk` giờ chỉ cung cấp các endpoint mô phỏng login và PTZ ở mức logic, lưu phiên (session) trong bộ nhớ, phục vụ cho việc tích hợp UI hoặc kiểm thử luồng quyền hạn.
+
+Giới hạn hiện tại:
+- "login" chỉ tạo handle giả lập, không thật sự kết nối SDK.
+- PTZ trả về JSON xác nhận lệnh; không gửi tới thiết bị thật.
+- Snapshot qua SDK bị vô hiệu (trả lỗi `SNAPSHOT_UNSUPPORTED_NO_SDK`). Bạn vẫn có thể dùng RTSP + FFmpeg snapshot trong module `snapshot`.
+
+Endpoints REST hiện tại (JWT + RBAC):
+- POST /netsdk/sessions { ip, port, username, password } → tạo session (handle)
+- GET /netsdk/sessions → liệt kê tất cả session trong bộ nhớ
+- GET /netsdk/sessions/:handle → chi tiết 1 session
+- DELETE /netsdk/sessions/:handle → logout (huỷ session)
+- PUT /netsdk/sessions/:handle/ptz { channel, cmd, p1?, p2?, p3?, stop? } → lệnh PTZ giả lập
+- POST /netsdk/sessions/:handle/snapshots { channel, filePath } → hiện trả `{ ok:false, error: 'SNAPSHOT_UNSUPPORTED_NO_SDK' }`
+
+Định hướng mở rộng (nếu cần thật sự nói chuyện với thiết bị):
+1) Tích hợp ONVIF: dùng thư viện onvif để thực hiện PTZ/snapshot thật. Thay logic giả lập trong `NetSdkService` bằng gọi ONVIF profile.
+2) Viết adapter SDK riêng bằng Node-API (C++ addon) hoặc quay lại mô hình bridge nếu cần hiệu năng cao.
+3) Thêm persistent store cho sessions (Redis) nếu muốn scale nhiều instance.
+
+Việc loại bỏ bridge giúp repo nhẹ, không cần biên dịch C++ và tránh lỗi DLL. Tuy nhiên muốn PTZ thật bạn phải triển khai một trong các hướng mở rộng trên.
+

@@ -27,7 +27,8 @@ export class Recording {
   @Column({ name: 'ended_at', type: 'timestamptz', nullable: true })
   endedAt?: Date | null;
 
-  @Column({ type: 'varchar', length: 20, default: 'COMPLETED' })
+  // Mặc định PENDING khi mới tạo, service sẽ chuyển RUNNING/COMPLETED
+  @Column({ type: 'varchar', length: 20, default: 'PENDING' })
   status: RecordingStatus;
 
   @Column({ name: 'error_message', type: 'varchar', length: 255, nullable: true })
