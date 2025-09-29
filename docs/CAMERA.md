@@ -62,6 +62,69 @@ curl -Method PATCH -Uri http://localhost:3000/cameras/<id> -Headers @{Authorizat
 curl -Method DELETE -Uri http://localhost:3000/cameras/<id> -Headers @{Authorization="Bearer $token"}
 ```
 
+## Tham số query mở rộng (/cameras)
+| Param | Kiểu | Ví dụ | Mô tả |
+|-------|------|-------|-------|
+| enabled | boolean | enabled=true | Lọc theo trạng thái bật/tắt |
+| name | string | name=Kho | Tên chứa chuỗi (LIKE, không phân biệt hoa thường) |
+| vendor | string | vendor=dahua | Lọc 1 vendor (bị override nếu có vendors) |
+| vendors | string | vendors=dahua,hikvision | Danh sách vendor phân cách dấu phẩy |
+| createdFrom | date/ISO | createdFrom=2025-09-01 | Lọc tạo từ ngày (>=) |
+| createdTo | date/ISO | createdTo=2025-09-29 | Lọc tạo đến ngày (<=) |
+| page | number | page=2 | Trang (>=1) – kích hoạt pagination nếu kèm pageSize |
+| pageSize | number | pageSize=10 | Số phần tử mỗi trang (tối đa 100) |
+| sortBy | enum | sortBy=name | createdAt | name | vendor (mặc định createdAt) |
+| sortDir | enum | sortDir=ASC | ASC | DESC (mặc định DESC) |
+
+Quy tắc:
+- Nếu không truyền cả page và pageSize → trả về MẢNG đơn thuần (giữ tương thích cũ).
+- Nếu truyền page & pageSize hợp lệ → trả về OBJECT có `data` + `pagination`.
+- `vendors` ưu tiên hơn `vendor` nếu cùng xuất hiện.
+
+### Ví dụ request kết hợp
+```
+/cameras?enabled=true&vendors=dahua,hikvision&name=Kho&page=1&pageSize=5&sortBy=name&sortDir=ASC&createdFrom=2025-09-01
+```
+
+### Ví dụ response (có pagination)
+```json
+{
+  "data": [
+    { "id": "...", "name": "Kho 1", "vendor": "dahua", "enabled": true, "createdAt": "2025-09-29T09:00:00.000Z" }
+  ],
+  "pagination": { "page": 1, "pageSize": 5, "total": 12, "totalPages": 3 },
+  "sort": { "sortBy": "name", "sortDir": "ASC" },
+  "filtersApplied": { "enabled": true, "name": "Kho", "vendor": "dahua,hikvision", "createdFrom": "2025-09-01T00:00:00.000Z", "createdTo": null }
+}
+```
+
+### Ví dụ response (không pagination)
+```json
+[
+  { "id": "...", "name": "Kho 1", "vendor": "dahua", "enabled": true },
+  { "id": "...", "name": "Kho 2", "vendor": "hikvision", "enabled": true }
+]
+```
+
+## Verify RTSP – phân loại trạng thái
+Endpoint: `GET /cameras/:id/verify`
+
+| status | Ý nghĩa | Gợi ý |
+|--------|---------|-------|
+| OK | Bắt được 1 frame thành công | Kết nối tốt |
+| AUTH | Sai user/pass hoặc 401 | Kiểm tra credential |
+| TIMEOUT | Hết thời gian chờ | Kiểm tra mạng / IP / port |
+| CONN | Lỗi kết nối (refused / unreachable) | Kiểm tra firewall / routing |
+| NOT_FOUND | Stream hoặc đường dẫn không tồn tại | Kiểm tra đường dẫn RTSP |
+| UNKNOWN | Khác (chung chung) | Xem stderr / log chi tiết |
+
+Timeout cấu hình qua biến môi trường: `CAMERA_VERIFY_TIMEOUT_MS` (mặc định 4000 ms).
+
+## Ghi chú tương thích
+- Thay đổi này KHÔNG phá vỡ client cũ: không dùng pagination → format cũ.
+- Khi nâng cấp client mới: nên kiểm tra nếu response là mảng hay object để xử lý pagination UI.
+- Có thể thêm CSV export / cache trong tương lai.
+
 ## Lỗi thường gặp
 | Mã | Ý nghĩa | Gợi ý |
 |----|---------|-------|
