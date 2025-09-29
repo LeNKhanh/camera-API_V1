@@ -1,12 +1,12 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { IsEnum, IsInt, IsOptional, IsPositive } from 'class-validator';
-import { PtzService, PtzAction } from './ptz.service';
+import { PtzService, PtzAction, PtzActions } from './ptz.service';
 import { JwtAuthGuard } from '../guards/jwt.guard';
 import { RolesGuard } from '../../common/roles.guard';
 import { Roles } from '../../common/roles.decorator';
 
 class PtzCommandDto {
-  @IsEnum(['PAN_LEFT','PAN_RIGHT','TILT_UP','TILT_DOWN','ZOOM_IN','ZOOM_OUT','STOP'])
+  @IsEnum(PtzActions)
   action: PtzAction;
 
   @IsOptional()

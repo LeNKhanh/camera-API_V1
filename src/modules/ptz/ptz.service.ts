@@ -3,7 +3,17 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Camera } from '../../typeorm/entities/camera.entity';
 
-export type PtzAction = 'PAN_LEFT' | 'PAN_RIGHT' | 'TILT_UP' | 'TILT_DOWN' | 'ZOOM_IN' | 'ZOOM_OUT' | 'STOP';
+// Runtime enum object (dùng cho class-validator IsEnum)
+export const PtzActions = {
+  PAN_LEFT: 'PAN_LEFT',
+  PAN_RIGHT: 'PAN_RIGHT',
+  TILT_UP: 'TILT_UP',
+  TILT_DOWN: 'TILT_DOWN',
+  ZOOM_IN: 'ZOOM_IN',
+  ZOOM_OUT: 'ZOOM_OUT',
+  STOP: 'STOP',
+} as const;
+export type PtzAction = typeof PtzActions[keyof typeof PtzActions];
 
 interface ActiveMove {
   action: PtzAction;
@@ -29,7 +39,7 @@ export class PtzService {
       ZOOM_IN: 'DH_PTZ_ZOOM_ADD_CONTROL',
       ZOOM_OUT: 'DH_PTZ_ZOOM_DEC_CONTROL',
       STOP: 'DH_PTZ_STOP'
-    };
+    } as const;
 
     if (action === 'STOP') {
       const prev = this.active.get(cameraId);
