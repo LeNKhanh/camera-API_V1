@@ -24,6 +24,9 @@ export class SnapshotService {
     @InjectRepository(Snapshot) private readonly snapRepo: Repository<Snapshot>,
   ) {}
 
+  // Ghi nhớ xem ffmpeg build hiện tại có hỗ trợ -stimeout hay không (null = chưa kiểm tra)
+  private stimeoutSupported: boolean | null = null;
+
   // Phân loại lỗi FFmpeg để client đọc dễ hơn
   // Các mã: AUTH, TIMEOUT, CONN, NOT_FOUND, FORMAT, PERMISSION, UNKNOWN
   private classifyFfmpegError(stderr: string): string {
@@ -90,6 +93,8 @@ export class SnapshotService {
     // Xây dựng args FFmpeg. Một số bản build cũ không hỗ trợ -stimeout (thấy lỗi Unrecognized option 'stimeout')
     // Ta thêm rồi nếu fail vì option này sẽ retry không có nó.
     const buildArgs = (url: string, transport: 'tcp' | 'udp', includeStimeout = true) => {
+      // Nếu đã phát hiện không hỗ trợ thì ép includeStimeout=false
+      if (this.stimeoutSupported === false) includeStimeout = false;
       const arr = [
         '-loglevel', 'error',
         '-hide_banner',
@@ -121,6 +126,9 @@ export class SnapshotService {
         const msg = (e as Error).message || '';
         // Retry bỏ -stimeout nếu unsupported
         if (/Unrecognized option 'stimeout'/i.test(msg)) {
+          if (this.stimeoutSupported !== false) {
+            this.stimeoutSupported = false; // lưu lại để lần sau không thêm nữa
+          }
           if (process.env.DEBUG_SNAPSHOT) console.debug('[SNAPSHOT] retry no -stimeout');
           try { await runOnce(buildArgs(url, 'tcp', false)); return { ok: true, usedUrl: url }; } catch (e2) { lastErr = e2; }
         } else {
@@ -129,7 +137,15 @@ export class SnapshotService {
         // UDP fallback
         if (lastErr && process.env.SNAPSHOT_FALLBACK_UDP === '1') {
           if (process.env.DEBUG_SNAPSHOT) console.debug('[SNAPSHOT] retry udp fallback');
-            try { await runOnce(buildArgs(url, 'udp', true)); return { ok: true, usedUrl: url }; } catch (e3) { lastErr = e3; }
+            try { await runOnce(buildArgs(url, 'udp', true)); return { ok: true, usedUrl: url }; } catch (e3) {
+              // Nếu tiếp tục báo unrecognized -stimeout (trường hợp chưa kịp set), set cờ và thử lại lần cuối không có -stimeout
+              if (/Unrecognized option 'stimeout'/i.test((e3 as Error).message || '')) {
+                this.stimeoutSupported = false;
+                try { await runOnce(buildArgs(url, 'udp', false)); return { ok: true, usedUrl: url }; } catch (e4) { lastErr = e4; }
+              } else {
+                lastErr = e3;
+              }
+            }
         }
       }
       const errMsg = (lastErr as Error)?.message || String(lastErr);
