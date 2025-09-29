@@ -11,6 +11,7 @@ import {
   Delete,
   Get,
   Param,
+  Query,
   Post as HttpPost,
   Patch,
   Post,
@@ -79,11 +80,18 @@ export class CameraController {
     return this.cameraService.create(dto);
   }
 
-  // Danh sách camera (mọi vai trò đã đăng nhập)
+  // Danh sách camera (filter optional: enabled=true|false, name chứa, vendor)
   @Get()
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
-  findAll() {
-    return this.cameraService.findAll();
+  findAll(
+    @Query('enabled') enabled?: string,
+    @Query('name') name?: string,
+    @Query('vendor') vendor?: string,
+  ) {
+    let enabledBool: boolean | undefined;
+    if (enabled === 'true') enabledBool = true;
+    else if (enabled === 'false') enabledBool = false;
+    return this.cameraService.findAll({ enabled: enabledBool, name, vendor });
   }
 
   // Chi tiết camera

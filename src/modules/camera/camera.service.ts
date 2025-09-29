@@ -18,24 +18,23 @@ export class CameraService {
     return this.repo.save(entity);
   }
 
-  // Lấy tất cả camera
-  // Lấy danh sách camera (tối ưu chỉ lấy cột cần)
-  findAll() {
-    // Chỉ lấy cột cần thiết để tăng tốc list
-    return this.repo.find({
-      select: {
-        id: true,
-        name: true,
-        ipAddress: true,
-        rtspPort: true,
-        enabled: true,
-        codec: true,
-        resolution: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      order: { createdAt: 'DESC' },
-    });
+  // Lấy danh sách camera với filter optional: enabled, name chứa, vendor
+  async findAll(filter?: { enabled?: boolean; name?: string; vendor?: string }) {
+    const qb = this.repo.createQueryBuilder('c')
+      .select(['c.id', 'c.name', 'c.ipAddress', 'c.rtspPort', 'c.enabled', 'c.codec', 'c.resolution', 'c.vendor', 'c.createdAt', 'c.updatedAt'])
+      .orderBy('c.createdAt', 'DESC');
+    if (filter) {
+      if (typeof filter.enabled === 'boolean') {
+        qb.andWhere('c.enabled = :enabled', { enabled: filter.enabled });
+      }
+      if (filter.name && filter.name.trim().length > 0) {
+        qb.andWhere('LOWER(c.name) LIKE :name', { name: `%${filter.name.toLowerCase()}%` });
+      }
+      if (filter.vendor && filter.vendor.trim().length > 0) {
+        qb.andWhere('LOWER(c.vendor) = :vendor', { vendor: filter.vendor.toLowerCase() });
+      }
+    }
+    return qb.getMany();
   }
 
   // Lấy 1 camera theo id

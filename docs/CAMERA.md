@@ -37,6 +37,15 @@ curl -Method POST -Uri http://localhost:3000/cameras -Headers @{Authorization="B
 # Danh sách
 curl -Headers @{Authorization="Bearer $token"} http://localhost:3000/cameras
 
+# Lọc theo enabled=true
+curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?enabled=true"
+
+# Tìm theo tên chứa 'Kho'
+curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?name=Kho"
+
+# Lọc vendor (ví dụ dahua)
+curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?vendor=dahua"
+
 # Cập nhật
 curl -Method PATCH -Uri http://localhost:3000/cameras/<id> -Headers @{Authorization="Bearer $token"} -Body '{"enabled":false}' -ContentType 'application/json'
 
