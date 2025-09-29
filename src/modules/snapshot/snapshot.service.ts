@@ -40,11 +40,35 @@ export class SnapshotService {
   async capture(cameraId: string, filename?: string) {
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });
     if (!cam) throw new NotFoundException('Camera not found');
-    // Ưu tiên rtspUrl đã cấu hình; nếu không, build từ thông tin camera
-    if (!cam.rtspUrl && (!cam.username || !cam.password)) {
-      throw new Error('Camera missing rtspUrl or username/password to build RTSP URL');
+    // Ưu tiên rtspUrl đã cấu hình; nếu không, tự xây dựng thử theo vendor phổ biến.
+    let rtsp = cam.rtspUrl?.trim();
+    if (!rtsp) {
+      if (!cam.username || !cam.password) {
+        throw new Error('Camera missing rtspUrl or username/password to build RTSP URL');
+      }
+      const baseAuth = `${encodeURIComponent(cam.username)}:${encodeURIComponent(cam.password)}@${cam.ipAddress}:${cam.rtspPort}`;
+      // Các pattern phổ biến (có thể tuỳ biến sau này). Thứ tự quan trọng.
+      const vendor = (cam.vendor || '').toLowerCase();
+      const candidates: string[] = [];
+      if (vendor.includes('hik') || vendor.includes('hikvision')) {
+        candidates.push(`rtsp://${baseAuth}/Streaming/Channels/101`); // Main stream
+        candidates.push(`rtsp://${baseAuth}/Streaming/Channels/102`); // Sub stream
+      } else if (vendor.includes('dahua')) {
+        candidates.push(`rtsp://${baseAuth}/cam/realmonitor?channel=1&subtype=0`);
+        candidates.push(`rtsp://${baseAuth}/cam/realmonitor?channel=1&subtype=1`);
+      } else if (vendor.includes('onvif')) {
+        candidates.push(`rtsp://${baseAuth}/onvif-media/media.amp`);
+      }
+      // Generic fallback nếu không match vendor
+      candidates.push(`rtsp://${baseAuth}/live`);
+      candidates.push(`rtsp://${baseAuth}/`);
+      // Chọn candidate đầu (chúng ta không biết chính xác đường dẫn thực tế). Có thể thử lần lượt tương lai.
+      rtsp = candidates[0];
+      if (process.env.DEBUG_SNAPSHOT) {
+        // eslint-disable-next-line no-console
+        console.debug('[SNAPSHOT] built RTSP from vendor patterns', { chosen: rtsp, candidates });
+      }
     }
-    const rtsp = cam.rtspUrl || `rtsp://${cam.username}:${cam.password}@${cam.ipAddress}:${cam.rtspPort}`;
 
     const outName = filename || `${randomUUID()}.jpg`;
     const baseDir = process.env.SNAPSHOT_DIR || tmpdir();
@@ -137,7 +161,7 @@ export class SnapshotService {
       throw new InternalServerErrorException(`SNAPSHOT_CAPTURE_FAILED:${reason}: ${msg}`);
     }
 
-    const snap = this.snapRepo.create({ camera: cam, storagePath: outPath } as any);
+    const snap = this.snapRepo.create({ camera: cam, storagePath: outPath, } as any);
     await this.snapRepo.save(snap);
     return snap;
   }
