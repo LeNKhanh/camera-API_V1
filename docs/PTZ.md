@@ -73,7 +73,11 @@ Nếu gửi lệnh quá nhanh (<200ms so với lệnh trước cùng camera) ser
 ```json
 { "ok": false, "throttled": true, "minIntervalMs": 200 }
 ```
-Có thể điều chỉnh sau bằng cấu hình (hiện hard-code trong service).
+Có thể điều chỉnh qua biến môi trường:
+```
+PTZ_THROTTLE_MS=150   # ví dụ giảm còn 150ms
+PTZ_THROTTLE_DEBUG=1  # bật trả thêm lastDeltaMs giúp debug
+```
 
 ### Ghi log lịch sử PTZ
 Entity mới `ptz_logs` gồm:

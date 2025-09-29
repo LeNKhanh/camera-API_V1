@@ -27,22 +27,42 @@ export class PtzService {
   private active = new Map<string, ActiveMove>();
   // Throttle: lưu timestamp lệnh cuối theo cameraId
   private lastCommandAt = new Map<string, number>();
-  private throttleMs = 200; // tối thiểu 200ms giữa 2 lệnh
+  private throttleMs = 200; // tối thiểu 200ms giữa 2 lệnh (có thể override qua ENV PTZ_THROTTLE_MS)
+  private debugThrottle = false; // PTZ_THROTTLE_DEBUG=1 để trả thêm lastDeltaMs
 
   constructor(
     @InjectRepository(Camera) private readonly camRepo: Repository<Camera>,
     @InjectRepository(PtzLog) private readonly logRepo: Repository<PtzLog>,
   ) {}
 
+  private initConfigOnce() {
+    // Lazy init để chắc chắn biến môi trường đã được load
+    if ((this as any)._cfgInited) return;
+    const envMs = process.env.PTZ_THROTTLE_MS;
+    if (envMs && !isNaN(Number(envMs))) {
+      const v = parseInt(envMs, 10);
+      if (v >= 0 && v <= 10000) this.throttleMs = v; // giới hạn an toàn
+    }
+    this.debugThrottle = process.env.PTZ_THROTTLE_DEBUG === '1';
+    (this as any)._cfgInited = true;
+  }
+
   async execute(cameraId: string, action: PtzAction, speed = 1, durationMs?: number) {
+    this.initConfigOnce();
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });
     if (!cam) throw new NotFoundException('Camera not found');
 
     // Throttle đơn giản tránh spam quá nhanh
     const now = Date.now();
     const last = this.lastCommandAt.get(cameraId) || 0;
-    if (now - last < this.throttleMs) {
-      return { ok: false, throttled: true, minIntervalMs: this.throttleMs };
+    const delta = now - last;
+    if (delta < this.throttleMs) {
+      return {
+        ok: false,
+        throttled: true,
+        minIntervalMs: this.throttleMs,
+        ...(this.debugThrottle ? { lastDeltaMs: delta } : {})
+      };
     }
     this.lastCommandAt.set(cameraId, now);
 
@@ -121,7 +141,8 @@ export class PtzService {
       speed,
       vector: { pan: vectorPan, tilt: vectorTilt, zoom: vectorZoom },
       willAutoStopAfterMs: durationMs || null,
-      startedAt
+      startedAt,
+      ...(this.debugThrottle ? { lastDeltaMs: delta } : {})
     };
   }
 
