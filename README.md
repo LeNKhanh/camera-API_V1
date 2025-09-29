@@ -71,11 +71,6 @@ npm run migration:generate
 # Áp dụng migration vào DB hiện tại
 npm run migration:run
 ```
-
-Ghi chú:
-- Ở môi trường dev bạn có thể để `synchronize=true` cho nhanh, nhưng production nên tắt và chỉ dùng migration.
-- Nếu PowerShell chặn script, xem mục "Khắc phục sự cố" để bật RemoteSigned hoặc dùng cmd.exe.
-
 ## Đăng nhập nhanh
 - Sau khi seed: username `admin` / password `admin123`
 - Gọi POST /auth/login -> nhận `accessToken`
@@ -85,6 +80,8 @@ Ghi chú:
 Auth:
 - POST /auth/login
 - POST /auth/register (dev)
+ - POST /auth/refresh (body: userId, refreshToken) – cấp mới access + refresh (rotate)
+ - POST /auth/logout (body: userId) – xoá refresh token (revoke)
 
 Camera:
 - CRUD: /cameras
@@ -137,20 +134,95 @@ NetSDK (legacy mock PTZ):
 - Recording: `docs/RECORDING.md`
 - Event: `docs/EVENT.md`
 - Stream (stub): `docs/STREAM.md`
-
-Lưu ý: Stream cần hạ tầng streaming thực tế (SRS/nginx-rtmp/HLS segmenter); service hiện trả về URL mẫu.
-
 ## Lược đồ ngắn gọn
 Entities chính: users, cameras, snapshots, recordings, events.
 Mở rộng thêm: cameras.vendor, cameras.sdk_port; recordings.status (PENDING→RUNNING→COMPLETED/FAILED); ptz_logs (lịch sử PTZ, vector & speed) và retention tự động.
 
-## Ghi chú triển khai
-- Dev bật synchronize=true; Prod dùng migrations.
-- FFmpeg: đã bundle ffmpeg-static. Đặt `SNAPSHOT_DIR`, `RECORD_DIR` là thư mục tồn tại.
-- Auto-cache RTSP (tùy chọn): `SNAPSHOT_CACHE_RTSP=1` (+ `SNAPSHOT_CACHE_OVERRIDE=1` nếu muốn ghi đè).
-- Logic snapshot nâng cao: xem `docs/ADVANCED_SNAPSHOT.md`.
-- Camera IP validation: kiểm tra chặt IPv4 & IPv6; sai định dạng trả 400.
-- Endpoint /cameras/:id/verify: dùng ffmpeg kiểm tra reachability nhanh (timeout tùy `CAMERA_VERIFY_TIMEOUT_MS`).
+## Cấu trúc codebase (Architecture Overview)
+```text
+src/
+	main.ts                # Bootstrap + listen (có logic auto-port nếu bật)
+	data-source.ts         # (Nếu dùng TypeORM CLI / migrations async)
+	seeds/                 # Script seed dữ liệu (user admin, mẫu camera...)
+	common/
+		roles.decorator.ts   # @Roles(...)
+		roles.guard.ts       # Kiểm tra role từ JWT payload
+	modules/
+		app.module.ts        # Gắn kết tất cả module
+		app.controller.ts    # /health, endpoint phụ
+		auth/                # Đăng ký / đăng nhập / JWT
+			auth.controller.ts
+			auth.service.ts
+			auth.module.ts
+			jwt.strategy.ts     # Parse & verify Bearer token
+		guards/
+			jwt.guard.ts        # Áp dụng Passport strategy 'jwt'
+		camera/
+			camera.controller.ts
+			camera.service.ts   # CRUD + filter nâng cao + verify RTSP + IP validate
+			camera.module.ts
+		snapshot/
+			snapshot.controller.ts
+			snapshot.service.ts # Capture (RTSP/FAKE), retry, phân loại lỗi
+			snapshot.module.ts
+		recording/
+			recording.controller.ts
+			recording.service.ts# Start/Stop (RTSP/FAKE), pacing, download
+			recording.module.ts
+		event/
+			event.controller.ts # CRUD + ack + simulate-motion
+			event.service.ts
+			event.module.ts
+		stream/
+			stream.controller.ts# Trả URL stub (HLS/DASH)
+			stream.service.ts
+			stream.module.ts
+		netsdk/               # Mock SDK PTZ cũ (giữ để so sánh)
+			netsdk.controller.ts
+			netsdk.service.ts
+			netsdk.module.ts
+		ptz/                  # PTZ Friendly API (abstract hoá tốc độ / vector)
+			ptz.controller.ts
+			ptz.service.ts      # Speed→vector, throttle, log, prune
+			ptz.module.ts
+	typeorm/
+		entities/
+			user.entity.ts      # users (auth + role)
+			camera.entity.ts    # cameras (RTSP info, vendor ...)
+			snapshot.entity.ts  # snapshots (đường dẫn file, time)
+			recording.entity.ts # recordings (file, status, strategy)
+			event.entity.ts     # events (type, ack, camera)
+			ptz-log.entity.ts   # ptz_logs (action, vector, speed, timestamp)
+	migrations/             # (Sẽ sinh khi bật migration flow)
+
+docs/                    
+```
+
+### Luồng chính (request → response)
+1. Client gửi HTTP request kèm `Authorization: Bearer <JWT>` (trừ /auth/login, /auth/register)
+2. `JwtAuthGuard` xác thực token (header) → parse payload → `req.user`
+3. (Nếu route có @Roles) `RolesGuard` lọc theo vai trò
+4. Controller nhận DTO (class-validator) → gọi Service
+5. Service thao tác DB qua TypeORM Repo / hoặc gọi FFmpeg / logic khác
+6. Kết quả trả về JSON (tối giản, không lộ mật khẩu hoặc đường dẫn nội bộ nếu không cần)
+
+### Ghi chú kiến trúc
+- Module hoá rõ ràng: dễ bật/tắt hoặc tách microservice sau này.
+- Service không import ngược lẫn nhau để tránh vòng lặp (chỉ ngoại lệ nếu dùng injection tokens).
+- Entity giữ logic tối thiểu (anemic model) → Business nằm ở service.
+- PTZ friendly tách riêng với mock NetSDK để sau này có thể thêm adapter ONVIF / SDK thực.
+- Tất cả thao tác nặng (ffmpeg, retry snapshot) được bao trong service chuyên dụng để tránh controller phình to.
+- Pagination chỉ bật khi có query `page` hoặc `pageSize` để giữ backward compatibility.
+- ENV kiểm soát hành vi (throttle, timeout, fake mode) giúp dev dễ test offline.
+
+### Hướng mở rộng
+- Thêm `SwaggerModule` tự sinh OpenAPI docs.
+- Thêm `@nestjs/config` + schema validation cho ENV.
+- Viết migration chính thức: ptz_logs, bổ sung cột ack, strategy (nếu chưa).
+- Adapter PTZ ONVIF thật (thay thế logic giả). 
+- Module lưu trữ S3/MinIO cho snapshot/recording.
+- WebSocket / SSE push realtime events & PTZ feedback.
+- Cơ chế audit log / soft delete.
 
 ### Biến môi trường quan trọng (tham khảo nhanh)
 | ENV | Mô tả | Mặc định |
@@ -164,6 +236,7 @@ Mở rộng thêm: cameras.vendor, cameras.sdk_port; recordings.status (PENDING�
 | PTZ_THROTTLE_DEBUG | 1: trả thêm lastDeltaMs | 0 |
 | PTZ_LOG_MAX | Số log PTZ tối đa mỗi camera | 5 |
 | AUTO_PORT | 1: tự động tìm port trống nếu 3000 bận | 0 |
+| REFRESH_TOKEN_TTL_SEC | TTL refresh token (giây) | 604800 |
 
 > Ghi chú: Production nên tắt `synchronize` và dùng migrations để đảm bảo schema ổn định.
 
@@ -176,7 +249,7 @@ JWT + RolesGuard với vai trò ADMIN / OPERATOR / VIEWER.
 - Snapshot fail: bật `DEBUG_SNAPSHOT=1` và xem advanced doc
 - PowerShell policy: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
 ## Quy trình test nhanh (rút gọn)
-1) `npm run seed` → đăng nhập admin (POST /auth/login)
+1) `npm run seed` → đăng nhập admin (POST /auth/login trả về accessToken + refreshToken)
 2) Tạo camera (`POST /cameras`)
 3) Chụp snapshot (`POST /snapshots/capture`)
 4) Bắt đầu ghi (`POST /recordings/start`)
@@ -185,15 +258,12 @@ JWT + RolesGuard với vai trò ADMIN / OPERATOR / VIEWER.
 Chi tiết snapshot nâng cao & xử lý lỗi xem `docs/ADVANCED_SNAPSHOT.md`.
 ### 10) Gợi ý test kịch bản end-to-end
 1) Login admin → tạo camera RTSP thật → snapshot → recording 30s → tạo event → list tất cả → check DB → xoá camera → xác nhận cascade xóa bản ghi liên quan.
-2) Login viewer → xác nhận chỉ GET được, POST/PATCH/DELETE bị 403.
+2) Login viewer → xác nhận chỉ GET được, POST/PATCH/DELETE bị 403. Test refresh: /auth/refresh -> nhận cặp token mới; dùng token cũ sau logout phải 401.
 3) Đổi STREAM_BASE_URL và thử GET stream URL.
 
 ---
 
 ## PTZ nội bộ (mock)
-
-Trước đây phần này mô tả tích hợp NetSDK thông qua một "bridge" native. Hiện tại dự án đã loại bỏ phụ thuộc bridge để giữ mọi thứ thuần REST + TypeScript. Module `netsdk` giờ chỉ cung cấp các endpoint mô phỏng login và PTZ ở mức logic, lưu phiên (session) trong bộ nhớ, phục vụ cho việc tích hợp UI hoặc kiểm thử luồng quyền hạn.
-
 Giới hạn hiện tại:
 - "login" chỉ tạo handle giả lập, không thật sự kết nối SDK.
 - PTZ trả về JSON xác nhận lệnh; không gửi tới thiết bị thật.

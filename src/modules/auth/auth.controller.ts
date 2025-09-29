@@ -1,5 +1,7 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards, Req } from '@nestjs/common';
 import { IsIn, IsString, MinLength } from 'class-validator';
+import { JwtAuthGuard } from '../guards/jwt.guard';
+import { RateLimitLoginGuard, RateLimitRefreshGuard } from '../../common/rate-limit.guard';
 
 import { AuthService } from './auth.service';
 import { UserRole } from '../../typeorm/entities/user.entity';
@@ -17,13 +19,9 @@ class RegisterDto {
   role: UserRole;
 }
 
-class LoginDto {
-  @IsString()
-  username: string;
-
-  @IsString()
-  password: string;
-}
+class LoginDto { @IsString() username: string; @IsString() password: string; }
+class RefreshDto { @IsString() userId: string; @IsString() refreshToken: string; }
+class LogoutDto { @IsString() userId: string; }
 
 @Controller('auth')
 export class AuthController {
@@ -42,8 +40,26 @@ export class AuthController {
   // Đăng nhập: trả về accessToken JWT
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
-    const token = await this.authService.validateAndLogin(dto.username, dto.password);
-    return { accessToken: token };
+  @UseGuards(RateLimitLoginGuard)
+  async login(@Body() dto: LoginDto): Promise<any> {
+    return this.authService.validateAndLogin(dto.username, dto.password);
+  }
+
+  @Post('refresh')
+  @UseGuards(RateLimitRefreshGuard)
+  async refresh(@Body() dto: RefreshDto): Promise<any> {
+    return this.authService.refresh(dto.userId, dto.refreshToken);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Body() dto: LogoutDto): Promise<any> {
+    return this.authService.logout(dto.userId);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async me(@Req() req: any): Promise<any> {
+    return this.authService.getProfile(req.user.userId);
   }
 }
