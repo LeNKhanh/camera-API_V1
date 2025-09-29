@@ -189,8 +189,11 @@ Yêu cầu: Camera có RTSP hợp lệ.
 1) Chụp ảnh (ADMIN/OPERATOR)
 	- POST /snapshots/capture
 	- Body tối thiểu: { "cameraId": "<id camera>", "filename": "tu_chon.jpg" }
-	- Có thể override trực tiếp đường dẫn RTSP để test nhanh (bỏ qua auto-detect):
-	  { "cameraId": "<id>", "rtspUrl": "rtsp://user:pass@ip:554/....", "filename": "test.jpg" }
+	- Override trực tiếp RTSP: { "cameraId": "<id>", "rtspUrl": "rtsp://user:pass@ip:554/...", "filename": "test.jpg" }
+	- Chọn chiến lược (tương lai dùng SDK native):
+	  strategy = "RTSP" (mặc định) | "SDK_NETWORK" | "SDK_LOCAL"
+	  Ví dụ: { "cameraId": "<id>", "strategy": "SDK_NETWORK" }
+	  Hiện tại nếu dùng SDK_* mà chưa bật addon sẽ trả về lỗi `SDK_SNAPSHOT_DISABLED` nhưng vẫn fallback RTSP.
 	- Mong đợi: trả về snapshot với storagePath (đường dẫn file). Ảnh được lưu vào SNAPSHOT_DIR (mặc định C:\\tmp).
 2) Danh sách snapshot
 	- GET /snapshots?cameraId=<id camera> → lọc theo camera.

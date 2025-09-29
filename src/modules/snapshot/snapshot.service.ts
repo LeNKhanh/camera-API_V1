@@ -40,9 +40,30 @@ export class SnapshotService {
     return 'UNKNOWN';
   }
 
-  async capture(cameraId: string, filename?: string, overrideRtsp?: string) {
+  async capture(
+    cameraId: string,
+    filename?: string,
+    overrideRtsp?: string,
+    strategy: string = 'RTSP',
+  ) {
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });
     if (!cam) throw new NotFoundException('Camera not found');
+
+    // Placeholder triển khai theo flow SDK người dùng gửi (CLIENT_Init -> Login -> Snap -> Logout -> Cleanup)
+    // Hiện tại chưa tích hợp native SDK. Nếu bật STRATEGY SDK nhưng chưa enable thì trả lỗi rõ.
+    const strat = (strategy || 'RTSP').toUpperCase();
+    if (strat === 'SDK_NETWORK' || strat === 'SDK_LOCAL') {
+      if (process.env.ENABLE_SDK_SNAPSHOT !== '1') {
+        throw new InternalServerErrorException('SDK_SNAPSHOT_DISABLED: bật ENABLE_SDK_SNAPSHOT=1 để dùng strategy SDK');
+      }
+      // Giả lập từng bước và sau đó fallback qua RTSP nếu không có addon
+      if (process.env.DEBUG_SNAPSHOT) {
+        // eslint-disable-next-line no-console
+        console.debug(`[SDK_SNAPSHOT] strategy=${strat} steps: INIT -> LOGIN -> ${strat === 'SDK_NETWORK' ? 'SnapPictureToFile' : 'RealPlay + CapturePictureEx'} -> LOGOUT -> CLEANUP (mock)`);
+      }
+      // Future: integrate native addon here.
+      // Tạm thời: continue to RTSP fallback dưới để vẫn chụp nếu có stream.
+    }
     // Xây dựng danh sách ứng viên RTSP. Nếu đã có cam.rtspUrl thì chỉ cần một phần tử.
     let rtspCandidates: string[] = [];
     if (overrideRtsp?.trim()) {

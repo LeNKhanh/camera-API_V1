@@ -24,6 +24,11 @@ class SnapshotCaptureDto {
   @IsOptional()
   @IsString()
   rtspUrl?: string;
+
+  // Chiến lược: RTSP (mặc định), SDK_NETWORK, SDK_LOCAL
+  @IsOptional()
+  @IsString()
+  strategy?: string;
 }
 
 class SnapshotQueryDto {
@@ -41,7 +46,7 @@ export class SnapshotController {
   @Post('capture')
   @Roles('ADMIN', 'OPERATOR')
   capture(@Body() dto: SnapshotCaptureDto) {
-    return this.svc.capture(dto.cameraId, dto.filename, dto.rtspUrl);
+    return this.svc.capture(dto.cameraId, dto.filename, dto.rtspUrl, dto.strategy);
   }
 
   // Danh sách snapshot theo camera
