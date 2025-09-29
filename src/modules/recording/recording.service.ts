@@ -63,59 +63,48 @@ export class RecordingService {
     if (strat === 'FAKE') {
       const size = (process.env.FAKE_RECORD_SIZE || '1280x720').match(/^\d+x\d+$/) ? process.env.FAKE_RECORD_SIZE! : '1280x720';
       const fr = parseInt(process.env.FAKE_RECORD_FPS || '15', 10);
-      const q = process.env.FAKE_RECORD_QUALITY || '23'; // CRF cho libx264 (nếu tái mã hoá)
+      const q = process.env.FAKE_RECORD_QUALITY || '23';
       const codec = process.env.FAKE_RECORD_CODEC || 'libx264';
-      // testsrc2 -> testsrc -> color loop
-      const candidateFilters = [
+      const filters = [
         `testsrc2=duration=${durationSec}:size=${size}:rate=${fr}`,
         `testsrc=duration=${durationSec}:size=${size}:rate=${fr}`,
         `color=c=black:s=${size}:d=${durationSec}`,
       ];
-      let chosenFilter: string | null = null; let lastErr: any;
-      for (const f of candidateFilters) {
-        // Thử nhanh xem ffmpeg có chấp nhận filter không bằng cách chuẩn bị spawn (ở đây cứ chọn filter đầu hoạt động – nếu fail sẽ tiếp tục)
-        chosenFilter = f; // ta cứ gán, nếu fail ở run thật sẽ thử cái tiếp theo
-        try {
-          await new Promise<void>((resolve, reject) => {
-            const testArgs = ['-v', 'error', '-f', 'lavfi', '-i', f, '-t', '0.1', '-f', 'null', '-'];
-            const proc = spawn(ffmpegPath || 'ffmpeg', testArgs, { windowsHide: true });
-            let errb = '';
-            proc.stderr?.on('data', d => errb += d.toString());
-            proc.on('close', c => c === 0 ? resolve() : reject(new Error(errb)));
-            proc.on('error', reject);
-          });
-          break; // thành công
-        } catch (e) { lastErr = e; chosenFilter = null; }
-      }
-      if (!chosenFilter) {
-        await this.recRepo.update(rec.id, { status: 'FAILED', endedAt: new Date(), errorMessage: 'FAKE_FILTER_FAILED' } as any);
-        return { id: rec.id, storagePath: rec.storagePath, status: 'FAILED' };
-      }
-      const args = [
-        '-hide_banner',
-        '-f', 'lavfi',
-        '-i', chosenFilter,
-        '-t', String(durationSec),
-        '-pix_fmt', 'yuv420p',
-        ...(codec ? ['-c:v', codec] : []),
-        ...(codec === 'libx264' ? ['-preset', 'veryfast', '-crf', q] : []),
-        '-y',
-        outPath,
-      ];
-      if (process.env.DEBUG_RECORDING) console.debug('[RECORDING][FAKE] args', args.join(' '));
-      const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
-      let stderr = '';
-      child.stderr?.on('data', d => { stderr += d.toString(); if (process.env.DEBUG_RECORDING) console.debug('[RECORDING][FAKE][stderr]', d.toString().trim()); });
-      child.on('close', async (code) => {
-        if (code === 0) {
-          await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
-        } else {
-          const reason = this.classifyFfmpegError(stderr);
+
+      // Set RUNNING ngay để response không là FAILED/PENDING tức thì
+      await this.recRepo.update(rec.id, { status: 'RUNNING' } as any);
+
+      const runWithFilter = (idx: number) => {
+        const filter = filters[idx];
+        const args = [
+          '-hide_banner', '-f', 'lavfi', '-i', filter,
+          '-t', String(durationSec),
+          '-pix_fmt', 'yuv420p',
+          ...(codec ? ['-c:v', codec] : []),
+          ...(codec === 'libx264' ? ['-preset', 'veryfast', '-crf', q] : []),
+          '-y', outPath,
+        ];
+        if (process.env.DEBUG_RECORDING) console.debug(`[RECORDING][FAKE] try filter[${idx}]`, filter);
+        const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
+        let stderr = '';
+        child.stderr?.on('data', d => { stderr += d.toString(); if (process.env.DEBUG_RECORDING) console.debug('[RECORDING][FAKE][stderr]', d.toString().trim()); });
+        child.on('close', async (code) => {
+          if (code === 0) {
+            await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
+            return;
+          }
+          if (idx < filters.length - 1) {
+            // Thử filter tiếp theo
+            runWithFilter(idx + 1);
+          } else {
+            const reason = this.classifyFfmpegError(stderr);
             const snippet = stderr.replace(/\s+/g, ' ').slice(0, 170);
-          await this.recRepo.update(rec.id, { status: 'FAILED', endedAt: new Date(), errorMessage: `FAKE_${reason} ${snippet}` } as any);
-        }
-      });
-      return { id: rec.id, storagePath: rec.storagePath, status: rec.status };
+            await this.recRepo.update(rec.id, { status: 'FAILED', endedAt: new Date(), errorMessage: `FAKE_${reason} ${snippet}` } as any);
+          }
+        });
+      };
+      runWithFilter(0);
+      return { id: rec.id, storagePath: rec.storagePath, status: 'RUNNING' };
     }
 
     // ---------- RTSP (mặc định) ----------
