@@ -61,27 +61,48 @@ export class SnapshotService {
         try { mkdirSync(baseDir, { recursive: true }); } catch (e) { throw new Error(`Cannot create snapshot dir ${baseDir}: ${(e as any).message}`); }
       }
       const outPath = join(baseDir, outName);
-      const size = (process.env.FAKE_SNAPSHOT_SIZE || '1280x720').match(/^\d+x\d+$/) ? process.env.FAKE_SNAPSHOT_SIZE! : '1280x720';
-      // Dùng testsrc2 để có pattern nhìn rõ; 1 frame duy nhất
-      const args = [
-        '-loglevel', 'error',
-        '-f', 'lavfi',
-        '-i', `testsrc2=size=${size}:rate=1`,
-        '-frames:v', '1',
-        '-q:v', '2',
-        '-y',
-        outPath,
-      ];
-      await new Promise<void>((resolve, reject) => {
+      // Xử lý size an toàn: nếu biến env undefined / rỗng / sai pattern -> fallback 1280x720
+      const requestedSize = process.env.FAKE_SNAPSHOT_SIZE;
+      const size = (requestedSize && /^\d+x\d+$/.test(requestedSize)) ? requestedSize : '1280x720';
+      const quality = process.env.FAKE_SNAPSHOT_QUALITY || '2'; // 2 = khá rõ, 31 = mờ
+      const bg = process.env.FAKE_SNAPSHOT_BG || 'black';
+
+      const runFfmpeg = (filter: string) => new Promise<void>((resolve, reject) => {
+        const args = [
+          '-loglevel', 'error',
+          '-f', 'lavfi',
+          '-i', filter,
+          '-frames:v', '1',
+          '-q:v', quality,
+          '-y',
+          outPath,
+        ];
+        if (process.env.DEBUG_SNAPSHOT) {
+          // eslint-disable-next-line no-console
+          console.debug('[SNAPSHOT][FAKE] spawn ffmpeg', (ffmpegPath || 'ffmpeg'), args.join(' '));
+        }
         const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
         let stderr = '';
         child.stderr.on('data', d => { stderr += d.toString(); });
-        child.on('error', reject);
-        child.on('close', (code) => {
+        child.on('error', err => reject(err));
+        child.on('close', code => {
           if (code === 0) return resolve();
-          reject(new Error(`FFmpeg FAKE generation failed (code=${code}) ${stderr}`));
+          reject(new Error(`code=${code} ${stderr.trim()}`));
         });
       });
+
+      // Thử lần lượt: testsrc2 -> testsrc -> color (fallback tối thiểu)
+      let fakeOk = false; let lastErr: any;
+      for (const filter of [
+        `testsrc2=size=${size}:rate=1`,
+        `testsrc=size=${size}:rate=1`,
+        `color=c=${bg}:s=${size}:d=0.01`,
+      ]) {
+        try { await runFfmpeg(filter); fakeOk = true; break; } catch (e) { lastErr = e; }
+      }
+      if (!fakeOk) {
+        throw new InternalServerErrorException(`SNAPSHOT_FAKE_FAILED: ${(lastErr as Error).message}`);
+      }
       const snap = this.snapRepo.create({ camera: cam, storagePath: outPath } as any);
       await this.snapRepo.save(snap);
       if (process.env.DEBUG_SNAPSHOT) {
