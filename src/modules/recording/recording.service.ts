@@ -25,6 +25,18 @@ export class RecordingService {
     @InjectRepository(Camera) private readonly camRepo: Repository<Camera>,
   ) {}
 
+  // Phân loại stderr ffmpeg tương tự snapshot để dễ debug
+  private classifyFfmpegError(stderr: string): string {
+    const s = stderr.toLowerCase();
+    if (/401|unauthorized|auth/i.test(stderr)) return 'AUTH';
+    if (/timed? out|stimeout|timeout/.test(s)) return 'TIMEOUT';
+    if (/connection refused|no route to host|network is unreachable|unable to connect|connection timed out/.test(s)) return 'CONN';
+    if (/404|not found|server returned 404/.test(s)) return 'NOT_FOUND';
+    if (/invalid data|could not find codec parameters|moov atom not found|malformed/.test(s)) return 'FORMAT';
+    if (/permission denied|access denied/.test(s)) return 'PERMISSION';
+    return 'UNKNOWN';
+  }
+
   // Bắt đầu ghi từ camera trong durationSec giây
   async startRecording(cameraId: string, durationSec: number) {
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });
@@ -65,7 +77,20 @@ export class RecordingService {
     ];
 
     // Spawn ffmpeg để ghi; stdio ignore để giảm overhead I/O
-    const child = spawn(ffmpegPath || 'ffmpeg', args, { stdio: 'ignore' });
+    const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
+    let stderr = '';
+    child.stderr?.on('data', (d) => {
+      const text = d.toString();
+      stderr += text;
+      if (process.env.DEBUG_RECORDING) {
+        // eslint-disable-next-line no-console
+        console.debug('[RECORDING][ffmpeg-stderr]', text.trim());
+      }
+    });
+    if (process.env.DEBUG_RECORDING) {
+      // eslint-disable-next-line no-console
+      console.debug('[RECORDING] spawn ffmpeg', (ffmpegPath || 'ffmpeg'), args.join(' '));
+    }
     // Phòng đợi mãi: kill sau (duration + 20s)
     const killer = setTimeout(() => {
       try { child.kill('SIGKILL'); } catch {}
@@ -79,12 +104,20 @@ export class RecordingService {
       clearTimeout(killer);
       if (code === 0) {
         await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
-      } else {
-        await this.recRepo.update(rec.id, {
-          status: 'FAILED',
-          endedAt: new Date(),
-          errorMessage: `ffmpeg exit code ${code}`,
-        } as any);
+        return;
+      }
+      const reason = this.classifyFfmpegError(stderr);
+      // Cắt ngắn stderr tránh vượt 255 ký tự (cột error_message)
+      const snippet = stderr.replace(/\s+/g, ' ').slice(0, 170); // chừa chỗ cho prefix
+      const errorMessage = `FFMPEG_${reason}_code=${code} ${snippet}`.slice(0, 255);
+      await this.recRepo.update(rec.id, {
+        status: 'FAILED',
+        endedAt: new Date(),
+        errorMessage,
+      } as any);
+      if (process.env.DEBUG_RECORDING) {
+        // eslint-disable-next-line no-console
+        console.error('[RECORDING] failed', { recId: rec.id, reason, code, snippet });
       }
     });
 
