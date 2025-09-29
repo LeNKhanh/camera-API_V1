@@ -11,6 +11,7 @@ import {
   Delete,
   Get,
   Param,
+  Post as HttpPost,
   Patch,
   Post,
   UseGuards,
@@ -104,5 +105,12 @@ export class CameraController {
   @Roles('ADMIN')
   remove(@Param('id') id: string) {
     return this.cameraService.remove(id);
+  }
+
+  // Xác minh kết nối RTSP (ping nhanh) -> /cameras/:id/verify
+  @Get(':id/verify')
+  @Roles('ADMIN', 'OPERATOR')
+  verify(@Param('id') id: string) {
+    return this.cameraService.verify(id);
   }
 }
