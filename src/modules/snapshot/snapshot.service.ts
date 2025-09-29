@@ -55,21 +55,31 @@ export class SnapshotService {
 
     // Tối ưu tham số giúp vào stream nhanh hơn và tránh treo lâu
     // ffmpeg -i <rtsp> -frames:v 1 -q:v 2 out.jpg
-    const buildArgs = (transport: 'tcp' | 'udp') => [
-      '-loglevel', 'error',
-      '-hide_banner',
-      '-rtsp_transport', transport,
-      ...(transport === 'tcp' ? ['-rtsp_flags', 'prefer_tcp'] : []),
-      '-stimeout', '10000000', // 10s microseconds unit for network timeout
-      '-analyzeduration', '500000',
-      '-probesize', '500000',
-      '-i', rtsp,
-      '-frames:v', '1',
-      '-q:v', '2',
-      '-y', // overwrite if exists
-      outPath,
-    ];
-    const args = buildArgs('tcp');
+    const timeoutMs = parseInt(process.env.SNAPSHOT_TIMEOUT_MS || '10000', 10); // 10s default
+    const analyzeduration = process.env.SNAPSHOT_ANALYZE_US || '500000';
+    const probesize = process.env.SNAPSHOT_PROBESIZE || '500000';
+
+    // Xây dựng args FFmpeg. Một số bản build cũ không hỗ trợ -stimeout (thấy lỗi Unrecognized option 'stimeout')
+    // Ta thêm rồi nếu fail vì option này sẽ retry không có nó.
+    const buildArgs = (transport: 'tcp' | 'udp', includeStimeout = true) => {
+      const arr = [
+        '-loglevel', 'error',
+        '-hide_banner',
+        '-rtsp_transport', transport,
+        ...(transport === 'tcp' ? ['-rtsp_flags', 'prefer_tcp'] : []),
+        // -stimeout là microseconds, convert từ ms
+        ...(includeStimeout ? ['-stimeout', String(timeoutMs * 1000)] : []),
+        '-analyzeduration', analyzeduration,
+        '-probesize', probesize,
+        '-i', rtsp,
+        '-frames:v', '1',
+        '-q:v', '2',
+        '-y',
+        outPath,
+      ];
+      return arr;
+    };
+  const args = buildArgs('tcp', true);
     const runOnce = (runArgs: string[]) => new Promise<void>((resolve, reject) => {
       const child = spawn(ffmpegPath || 'ffmpeg', runArgs, { windowsHide: true });
       let stderr = '';
@@ -90,20 +100,31 @@ export class SnapshotService {
     try {
       await runOnce(args);
     } catch (e) {
-      lastErr = e;
-      const enableUdp = process.env.SNAPSHOT_FALLBACK_UDP === '1';
-      if (enableUdp) {
-        const udpArgs = buildArgs('udp');
+      const msg = (e as Error).message || '';
+      // Nếu lỗi do -stimeout không hỗ trợ thì thử lại bỏ flag đó.
+      if (/Unrecognized option 'stimeout'/i.test(msg)) {
         if (process.env.DEBUG_SNAPSHOT) {
           // eslint-disable-next-line no-console
-          console.debug('[SNAPSHOT] retry udp', (ffmpegPath || 'ffmpeg'), udpArgs.join(' '));
+          console.debug('[SNAPSHOT] retry without -stimeout (unsupported in this ffmpeg build)');
         }
         try {
-          await runOnce(udpArgs);
-          lastErr = undefined; // succeeded on fallback
+          await runOnce(buildArgs('tcp', false));
+          lastErr = undefined;
         } catch (e2) {
           lastErr = e2;
         }
+      } else {
+        lastErr = e;
+      }
+
+      // UDP fallback nếu vẫn còn lỗi và bật cấu hình
+      if (lastErr && process.env.SNAPSHOT_FALLBACK_UDP === '1') {
+        const udpArgs = buildArgs('udp', !( /Unrecognized option 'stimeout'/i.test(msg)) );
+        if (process.env.DEBUG_SNAPSHOT) {
+          // eslint-disable-next-line no-console
+          console.debug('[SNAPSHOT] retry udp fallback', (ffmpegPath || 'ffmpeg'), udpArgs.join(' '));
+        }
+        try { await runOnce(udpArgs); lastErr = undefined; } catch (e3) { lastErr = e3; }
       }
     }
     if (lastErr) {
