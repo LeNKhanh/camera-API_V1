@@ -52,6 +52,44 @@ export class SnapshotService {
     // Placeholder triển khai theo flow SDK người dùng gửi (CLIENT_Init -> Login -> Snap -> Logout -> Cleanup)
     // Hiện tại chưa tích hợp native SDK. Nếu bật STRATEGY SDK nhưng chưa enable thì trả lỗi rõ.
     const strat = (strategy || 'RTSP').toUpperCase();
+
+    // FAKE: tạo ảnh testsynthetic (không cần RTSP) để bạn thử API khi chưa có camera thật
+    if (strat === 'FAKE') {
+      const outName = filename || `${randomUUID()}.jpg`;
+      const baseDir = process.env.SNAPSHOT_DIR || tmpdir();
+      if (!existsSync(baseDir)) {
+        try { mkdirSync(baseDir, { recursive: true }); } catch (e) { throw new Error(`Cannot create snapshot dir ${baseDir}: ${(e as any).message}`); }
+      }
+      const outPath = join(baseDir, outName);
+      const size = (process.env.FAKE_SNAPSHOT_SIZE || '1280x720').match(/^\d+x\d+$/) ? process.env.FAKE_SNAPSHOT_SIZE! : '1280x720';
+      // Dùng testsrc2 để có pattern nhìn rõ; 1 frame duy nhất
+      const args = [
+        '-loglevel', 'error',
+        '-f', 'lavfi',
+        '-i', `testsrc2=size=${size}:rate=1`,
+        '-frames:v', '1',
+        '-q:v', '2',
+        '-y',
+        outPath,
+      ];
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
+        let stderr = '';
+        child.stderr.on('data', d => { stderr += d.toString(); });
+        child.on('error', reject);
+        child.on('close', (code) => {
+          if (code === 0) return resolve();
+          reject(new Error(`FFmpeg FAKE generation failed (code=${code}) ${stderr}`));
+        });
+      });
+      const snap = this.snapRepo.create({ camera: cam, storagePath: outPath } as any);
+      await this.snapRepo.save(snap);
+      if (process.env.DEBUG_SNAPSHOT) {
+        // eslint-disable-next-line no-console
+        console.debug('[SNAPSHOT] FAKE strategy snapshot created', { cameraId: cam.id, path: outPath });
+      }
+      return snap;
+    }
     if (strat === 'SDK_NETWORK' || strat === 'SDK_LOCAL') {
       if (process.env.ENABLE_SDK_SNAPSHOT !== '1') {
         throw new InternalServerErrorException('SDK_SNAPSHOT_DISABLED: bật ENABLE_SDK_SNAPSHOT=1 để dùng strategy SDK');

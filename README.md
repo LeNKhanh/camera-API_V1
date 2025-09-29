@@ -190,10 +190,12 @@ Yêu cầu: Camera có RTSP hợp lệ.
 	- POST /snapshots/capture
 	- Body tối thiểu: { "cameraId": "<id camera>", "filename": "tu_chon.jpg" }
 	- Override trực tiếp RTSP: { "cameraId": "<id>", "rtspUrl": "rtsp://user:pass@ip:554/...", "filename": "test.jpg" }
-	- Chọn chiến lược (tương lai dùng SDK native):
-	  strategy = "RTSP" (mặc định) | "SDK_NETWORK" | "SDK_LOCAL"
-	  Ví dụ: { "cameraId": "<id>", "strategy": "SDK_NETWORK" }
-	  Hiện tại nếu dùng SDK_* mà chưa bật addon sẽ trả về lỗi `SDK_SNAPSHOT_DISABLED` nhưng vẫn fallback RTSP.
+	- Chọn chiến lược:
+	  - "RTSP" (mặc định)
+	  - "SDK_NETWORK" / "SDK_LOCAL" (mock – chưa có native SDK, sẽ fallback RTSP nếu ENABLE_SDK_SNAPSHOT!=1)
+	  - "FAKE" (tạo ảnh test không cần RTSP bằng ffmpeg testsrc2) → dùng khi bạn CHƯA có camera thật.
+	    Ví dụ body: { "cameraId": "<id>", "strategy": "FAKE", "filename": "fake1.jpg" }
+	    Có thể chỉnh kích thước bằng ENV: FAKE_SNAPSHOT_SIZE=800x600.
 	- Mong đợi: trả về snapshot với storagePath (đường dẫn file). Ảnh được lưu vào SNAPSHOT_DIR (mặc định C:\\tmp).
 2) Danh sách snapshot
 	- GET /snapshots?cameraId=<id camera> → lọc theo camera.
