@@ -111,6 +111,7 @@ Các bổ sung nhỏ để hỗ trợ NetSDK:
 - TypeORM đang bật synchronize=true cho tiện phát triển. Production nên tắt và dùng migration.
 - Dùng ffmpeg-static để có binary ffmpeg nếu máy chưa cài sẵn. Trên Windows, nên cấu hình RECORD_DIR và SNAPSHOT_DIR là thư mục tồn tại (ví dụ C:\\tmp).
 - Mở rộng S3/MinIO: có thể thay lưu local bằng upload lên S3, lưu key vào storage_path.
+- Auto-cache RTSP: bật `SNAPSHOT_CACHE_RTSP=1` để khi module snapshot dò được URL hợp lệ sẽ lưu vào cột `rtsp_url` của camera. Bật `SNAPSHOT_CACHE_OVERRIDE=1` nếu muốn ghi đè cả khi đã có `rtsp_url` (cẩn thận khi production).
 
 ## Bảo mật & RBAC
 - JWT với các vai trò: ADMIN, OPERATOR, VIEWER. Dùng @Roles + RolesGuard để hạn chế truy cập theo route.

@@ -185,6 +185,28 @@ export class SnapshotService {
       throw new InternalServerErrorException(`SNAPSHOT_CAPTURE_FAILED:ALL_CANDIDATES_FAILED ${summary}`);
     }
 
+    // Auto-cache: nếu thành công và bật SNAPSHOT_CACHE_RTSP=1 thì lưu lại vào camera.rtspUrl
+    if (process.env.SNAPSHOT_CACHE_RTSP === '1') {
+      const allowOverride = process.env.SNAPSHOT_CACHE_OVERRIDE === '1';
+      const current = cam.rtspUrl?.trim();
+      if (!current || allowOverride) {
+        // Chỉ lưu nếu URL không chứa credential mà ta muốn bỏ? Hiện dùng full URL để chắc chắn
+        // Có thể cải tiến: chỉ lưu path. Với scope hiện tại lưu nguyên URL để lần sau khỏi dựng lại.
+        cam.rtspUrl = successUrl;
+        try {
+          await this.camRepo.save(cam);
+          if (process.env.DEBUG_SNAPSHOT) {
+            const masked = successUrl.replace(/:\/\/[\w%.-]+:[^@]+@/, '://***:***@');
+            // eslint-disable-next-line no-console
+            console.debug('[SNAPSHOT] cached working rtsp_url', { cameraId: cam.id, rtsp: masked, override: !!current });
+          }
+        } catch (e) {
+          // eslint-disable-next-line no-console
+            console.warn('[SNAPSHOT] failed to cache rtsp_url', (e as Error).message);
+        }
+      }
+    }
+
   const snap = this.snapRepo.create({ camera: cam, storagePath: outPath } as any);
     await this.snapRepo.save(snap);
     return snap;
