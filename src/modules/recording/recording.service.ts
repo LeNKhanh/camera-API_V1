@@ -25,6 +25,9 @@ export class RecordingService {
     @InjectRepository(Camera) private readonly camRepo: Repository<Camera>,
   ) {}
 
+  // Lưu tiến trình đang chạy để có thể STOP
+  private active: Map<string, { proc: ReturnType<typeof spawn>; strategy: string; started: number }> = new Map();
+
   // Phân loại stderr ffmpeg tương tự snapshot để dễ debug
   private classifyFfmpegError(stderr: string): string {
     const s = stderr.toLowerCase();
@@ -56,6 +59,7 @@ export class RecordingService {
       durationSec,
       startedAt: new Date(),
       status: 'PENDING',
+      strategy: strat,
     } as Partial<Recording>);
     rec = await this.recRepo.save(rec);
 
@@ -72,7 +76,7 @@ export class RecordingService {
       ];
 
       // Set RUNNING ngay để response không là FAILED/PENDING tức thì
-      await this.recRepo.update(rec.id, { status: 'RUNNING' } as any);
+  await this.recRepo.update(rec.id, { status: 'RUNNING', strategy: 'FAKE' } as any);
 
       const runWithFilter = (idx: number) => {
         const filter = filters[idx];
@@ -103,7 +107,10 @@ export class RecordingService {
           }
         });
       };
+      const started = Date.now();
       runWithFilter(0);
+      // Không có handle stop vì FAKE kết thúc sau duration; vẫn ghi vào map để thống nhất
+      this.active.set(rec.id, { proc: null as any, strategy: 'FAKE', started });
       return { id: rec.id, storagePath: rec.storagePath, status: 'RUNNING' };
     }
 
@@ -123,7 +130,8 @@ export class RecordingService {
     ];
 
     // Spawn ffmpeg để ghi; stdio ignore để giảm overhead I/O
-    const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
+  const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
+  this.active.set(rec.id, { proc: child, strategy: 'RTSP', started: Date.now() });
     let stderr = '';
     child.stderr?.on('data', (d) => {
       const text = d.toString();
@@ -150,6 +158,7 @@ export class RecordingService {
       clearTimeout(killer);
       if (code === 0) {
         await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
+        this.active.delete(rec.id);
         return;
       }
       const reason = this.classifyFfmpegError(stderr);
@@ -165,9 +174,32 @@ export class RecordingService {
         // eslint-disable-next-line no-console
         console.error('[RECORDING] failed', { recId: rec.id, reason, code, snippet });
       }
+      this.active.delete(rec.id);
     });
 
     return { id: rec.id, storagePath: rec.storagePath, status: rec.status };
+  }
+
+  // Dừng bản ghi đang chạy
+  async stopRecording(id: string) {
+    const rec = await this.recRepo.findOne({ where: { id }, relations: ['camera'] });
+    if (!rec) throw new NotFoundException('Recording not found');
+    if (rec.status !== 'RUNNING') {
+      return { id: rec.id, status: rec.status, message: 'NOT_RUNNING' };
+    }
+    const info = this.active.get(rec.id);
+    if (!info) {
+      // Không tìm thấy process trong map -> có thể đã kết thúc
+      return { id: rec.id, status: rec.status, message: 'NO_ACTIVE_PROCESS' };
+    }
+    try {
+      if (info.proc) {
+        info.proc.kill('SIGKILL');
+      }
+    } catch {}
+    await this.recRepo.update(rec.id, { status: 'STOPPED', endedAt: new Date(), errorMessage: 'STOPPED_BY_USER' } as any);
+    this.active.delete(rec.id);
+    return { id: rec.id, status: 'STOPPED' };
   }
 
   // Danh sách recordings (có thể lọc theo camera)

@@ -2,7 +2,7 @@
 import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, JoinColumn } from 'typeorm';
 import { Camera } from './camera.entity';
 
-export type RecordingStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type RecordingStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'STOPPED';
 
 // Bảng recordings: mô tả các bản ghi video và trạng thái
 @Entity({ name: 'recordings' })
@@ -33,6 +33,10 @@ export class Recording {
 
   @Column({ name: 'error_message', type: 'varchar', length: 255, nullable: true })
   errorMessage?: string | null;
+
+  // Chiến lược ghi: RTSP / FAKE / (future SDK...)
+  @Column({ name: 'strategy', type: 'varchar', length: 20, default: 'RTSP' })
+  strategy: string;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

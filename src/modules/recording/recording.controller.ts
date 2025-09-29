@@ -3,7 +3,7 @@
 // - POST /recordings/start: bắt đầu ghi trong X giây từ cameraId
 // - GET /recordings?cameraId=: liệt kê theo camera hoặc tất cả
 // - GET /recordings/:id: xem chi tiết/trạng thái
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards, Put } from '@nestjs/common';
 import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 import { Roles } from '../../common/roles.decorator';
@@ -55,5 +55,12 @@ export class RecordingController {
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
   get(@Param('id') id: string) {
     return this.svc.getRecording(id);
+  }
+
+  // Dừng bản ghi đang chạy
+  @Put(':id/stop')
+  @Roles('ADMIN', 'OPERATOR')
+  stop(@Param('id') id: string) {
+    return this.svc.stopRecording(id);
   }
 }
