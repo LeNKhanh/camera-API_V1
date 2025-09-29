@@ -40,33 +40,37 @@ export class SnapshotService {
   async capture(cameraId: string, filename?: string) {
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });
     if (!cam) throw new NotFoundException('Camera not found');
-    // Ưu tiên rtspUrl đã cấu hình; nếu không, tự xây dựng thử theo vendor phổ biến.
-    let rtsp = cam.rtspUrl?.trim();
-    if (!rtsp) {
+    // Xây dựng danh sách ứng viên RTSP. Nếu đã có cam.rtspUrl thì chỉ cần một phần tử.
+    let rtspCandidates: string[] = [];
+    if (cam.rtspUrl?.trim()) {
+      rtspCandidates = [cam.rtspUrl.trim()];
+    } else {
       if (!cam.username || !cam.password) {
         throw new Error('Camera missing rtspUrl or username/password to build RTSP URL');
       }
       const baseAuth = `${encodeURIComponent(cam.username)}:${encodeURIComponent(cam.password)}@${cam.ipAddress}:${cam.rtspPort}`;
-      // Các pattern phổ biến (có thể tuỳ biến sau này). Thứ tự quan trọng.
       const vendor = (cam.vendor || '').toLowerCase();
-      const candidates: string[] = [];
-      if (vendor.includes('hik') || vendor.includes('hikvision')) {
-        candidates.push(`rtsp://${baseAuth}/Streaming/Channels/101`); // Main stream
-        candidates.push(`rtsp://${baseAuth}/Streaming/Channels/102`); // Sub stream
+      if (vendor.includes('hik')) {
+        rtspCandidates.push(
+          `rtsp://${baseAuth}/Streaming/Channels/101`,
+          `rtsp://${baseAuth}/Streaming/Channels/102`,
+        );
       } else if (vendor.includes('dahua')) {
-        candidates.push(`rtsp://${baseAuth}/cam/realmonitor?channel=1&subtype=0`);
-        candidates.push(`rtsp://${baseAuth}/cam/realmonitor?channel=1&subtype=1`);
+        rtspCandidates.push(
+          `rtsp://${baseAuth}/cam/realmonitor?channel=1&subtype=0`,
+          `rtsp://${baseAuth}/cam/realmonitor?channel=1&subtype=1`,
+        );
       } else if (vendor.includes('onvif')) {
-        candidates.push(`rtsp://${baseAuth}/onvif-media/media.amp`);
+        rtspCandidates.push(`rtsp://${baseAuth}/onvif-media/media.amp`);
       }
-      // Generic fallback nếu không match vendor
-      candidates.push(`rtsp://${baseAuth}/live`);
-      candidates.push(`rtsp://${baseAuth}/`);
-      // Chọn candidate đầu (chúng ta không biết chính xác đường dẫn thực tế). Có thể thử lần lượt tương lai.
-      rtsp = candidates[0];
+      // Fallback chung
+      rtspCandidates.push(
+        `rtsp://${baseAuth}/live`,
+        `rtsp://${baseAuth}/`,
+      );
       if (process.env.DEBUG_SNAPSHOT) {
         // eslint-disable-next-line no-console
-        console.debug('[SNAPSHOT] built RTSP from vendor patterns', { chosen: rtsp, candidates });
+        console.debug('[SNAPSHOT] rtsp candidate list', rtspCandidates);
       }
     }
 
@@ -85,7 +89,7 @@ export class SnapshotService {
 
     // Xây dựng args FFmpeg. Một số bản build cũ không hỗ trợ -stimeout (thấy lỗi Unrecognized option 'stimeout')
     // Ta thêm rồi nếu fail vì option này sẽ retry không có nó.
-    const buildArgs = (transport: 'tcp' | 'udp', includeStimeout = true) => {
+    const buildArgs = (url: string, transport: 'tcp' | 'udp', includeStimeout = true) => {
       const arr = [
         '-loglevel', 'error',
         '-hide_banner',
@@ -95,7 +99,7 @@ export class SnapshotService {
         ...(includeStimeout ? ['-stimeout', String(timeoutMs * 1000)] : []),
         '-analyzeduration', analyzeduration,
         '-probesize', probesize,
-        '-i', rtsp,
+        '-i', url,
         '-frames:v', '1',
         '-q:v', '2',
         '-y',
@@ -103,8 +107,35 @@ export class SnapshotService {
       ];
       return arr;
     };
-  const args = buildArgs('tcp', true);
-    const runOnce = (runArgs: string[]) => new Promise<void>((resolve, reject) => {
+  const attemptOne = async (url: string): Promise<{ ok: boolean; error?: string; reason?: string; usedUrl?: string; }> => {
+      const args = buildArgs(url, 'tcp', true);
+      if (process.env.DEBUG_SNAPSHOT) {
+        // eslint-disable-next-line no-console
+        console.debug('[SNAPSHOT] attempt tcp', (ffmpegPath || 'ffmpeg'), args.join(' '));
+      }
+      let lastErr: unknown;
+      try {
+        await runOnce(args);
+        return { ok: true, usedUrl: url };
+      } catch (e) {
+        const msg = (e as Error).message || '';
+        // Retry bỏ -stimeout nếu unsupported
+        if (/Unrecognized option 'stimeout'/i.test(msg)) {
+          if (process.env.DEBUG_SNAPSHOT) console.debug('[SNAPSHOT] retry no -stimeout');
+          try { await runOnce(buildArgs(url, 'tcp', false)); return { ok: true, usedUrl: url }; } catch (e2) { lastErr = e2; }
+        } else {
+          lastErr = e;
+        }
+        // UDP fallback
+        if (lastErr && process.env.SNAPSHOT_FALLBACK_UDP === '1') {
+          if (process.env.DEBUG_SNAPSHOT) console.debug('[SNAPSHOT] retry udp fallback');
+            try { await runOnce(buildArgs(url, 'udp', true)); return { ok: true, usedUrl: url }; } catch (e3) { lastErr = e3; }
+        }
+      }
+      const errMsg = (lastErr as Error)?.message || String(lastErr);
+      return { ok: false, error: errMsg, reason: this.classifyFfmpegError(errMsg), usedUrl: url };
+    };
+	const runOnce = (runArgs: string[]) => new Promise<void>((resolve, reject) => {
       const child = spawn(ffmpegPath || 'ffmpeg', runArgs, { windowsHide: true });
       let stderr = '';
       child.stderr.on('data', d => { stderr += d.toString(); });
@@ -114,54 +145,21 @@ export class SnapshotService {
         reject(new Error(`FFmpeg failed (code=${code}) ${stderr.trim()}`));
       });
     });
-
-    if (process.env.DEBUG_SNAPSHOT) {
+    const attempts: { url: string; error?: string; reason?: string }[] = [];
+    let successUrl: string | undefined;
+    for (const candidate of rtspCandidates) {
+      const res = await attemptOne(candidate);
+      if (res.ok) { successUrl = res.usedUrl; break; }
+      attempts.push({ url: candidate.replace(/:\/\/[\w%.-]+:[^@]+@/, '://***:***@'), error: res.error, reason: res.reason });
+    }
+    if (!successUrl) {
       // eslint-disable-next-line no-console
-      console.debug('[SNAPSHOT] attempt tcp', (ffmpegPath || 'ffmpeg'), args.join(' '));
+      console.error('[SNAPSHOT] all candidates failed', { cameraId, attempts });
+      const summary = attempts.map(a => `${a.reason}:${a.url}`).join('; ');
+      throw new InternalServerErrorException(`SNAPSHOT_CAPTURE_FAILED:ALL_CANDIDATES_FAILED ${summary}`);
     }
 
-    let lastErr: unknown;
-    try {
-      await runOnce(args);
-    } catch (e) {
-      const msg = (e as Error).message || '';
-      // Nếu lỗi do -stimeout không hỗ trợ thì thử lại bỏ flag đó.
-      if (/Unrecognized option 'stimeout'/i.test(msg)) {
-        if (process.env.DEBUG_SNAPSHOT) {
-          // eslint-disable-next-line no-console
-          console.debug('[SNAPSHOT] retry without -stimeout (unsupported in this ffmpeg build)');
-        }
-        try {
-          await runOnce(buildArgs('tcp', false));
-          lastErr = undefined;
-        } catch (e2) {
-          lastErr = e2;
-        }
-      } else {
-        lastErr = e;
-      }
-
-      // UDP fallback nếu vẫn còn lỗi và bật cấu hình
-      if (lastErr && process.env.SNAPSHOT_FALLBACK_UDP === '1') {
-        const udpArgs = buildArgs('udp', !( /Unrecognized option 'stimeout'/i.test(msg)) );
-        if (process.env.DEBUG_SNAPSHOT) {
-          // eslint-disable-next-line no-console
-          console.debug('[SNAPSHOT] retry udp fallback', (ffmpegPath || 'ffmpeg'), udpArgs.join(' '));
-        }
-        try { await runOnce(udpArgs); lastErr = undefined; } catch (e3) { lastErr = e3; }
-      }
-    }
-    if (lastErr) {
-      const msg = (lastErr as Error).message || String(lastErr);
-      const reason = this.classifyFfmpegError(msg);
-      // Mask credential in RTSP when logging
-      const masked = rtsp.replace(/:\/\/[\w%.-]+:[^@]+@/, '://***:***@');
-      // eslint-disable-next-line no-console
-      console.error('[SNAPSHOT] capture failed', { cameraId, rtsp: masked, reason, error: msg });
-      throw new InternalServerErrorException(`SNAPSHOT_CAPTURE_FAILED:${reason}: ${msg}`);
-    }
-
-    const snap = this.snapRepo.create({ camera: cam, storagePath: outPath, } as any);
+  const snap = this.snapRepo.create({ camera: cam, storagePath: outPath } as any);
     await this.snapRepo.save(snap);
     return snap;
   }
