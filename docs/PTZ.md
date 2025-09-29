@@ -95,6 +95,14 @@ Entity mới `ptz_logs` gồm:
 
 Mỗi lệnh (kể cả STOP) đều được insert một bản ghi.
 
+### Giới hạn số log lưu (retention)
+Mặc định chỉ giữ lại 5 bản ghi PTZ mới nhất cho mỗi camera (auto prune các bản cũ hơn).
+Có thể thay đổi:
+```
+PTZ_LOG_MAX=10   # ví dụ giữ 10 thay vì 5
+```
+Giới hạn mềm: 1..200.
+
 ### Lưu ý migration
 Dev: `synchronize=true` tự tạo bảng. Prod: cần sinh migration:
 ```

@@ -29,6 +29,7 @@ export class PtzService {
   private lastCommandAt = new Map<string, number>();
   private throttleMs = 200; // tối thiểu 200ms giữa 2 lệnh (có thể override qua ENV PTZ_THROTTLE_MS)
   private debugThrottle = false; // PTZ_THROTTLE_DEBUG=1 để trả thêm lastDeltaMs
+  private maxLogsPerCamera = 5; // giữ tối đa 5 log gần nhất mỗi camera (PTZ_LOG_MAX override)
 
   constructor(
     @InjectRepository(Camera) private readonly camRepo: Repository<Camera>,
@@ -44,7 +45,32 @@ export class PtzService {
       if (v >= 0 && v <= 10000) this.throttleMs = v; // giới hạn an toàn
     }
     this.debugThrottle = process.env.PTZ_THROTTLE_DEBUG === '1';
+    const maxEnv = process.env.PTZ_LOG_MAX;
+    if (maxEnv && !isNaN(Number(maxEnv))) {
+      const mv = parseInt(maxEnv, 10);
+      if (mv >= 1 && mv <= 200) this.maxLogsPerCamera = mv; // giới hạn mềm
+    }
     (this as any)._cfgInited = true;
+  }
+
+  private async pruneLogs(cameraId: string) {
+    // Xóa tất cả log cũ ngoài N bản mới nhất
+    // Dùng subquery OFFSET để lấy id cần xóa
+    const maxKeep = this.maxLogsPerCamera;
+    // Postgres đặc thù: cần subselect; QueryBuilder hỗ trợ OFFSET
+    const idsToDelete = await this.logRepo.createQueryBuilder('l')
+      .select('l.id', 'id')
+      .where('l.camera_id = :cid', { cid: cameraId })
+      .orderBy('l.created_at', 'DESC')
+      .offset(maxKeep)
+      .getRawMany<{ id: string }>();
+    if (idsToDelete.length === 0) return;
+    const idList = idsToDelete.map(r => r.id);
+    await this.logRepo.createQueryBuilder()
+      .delete()
+      .from(PtzLog)
+      .where('id IN (:...ids)', { ids: idList })
+      .execute();
   }
 
   async execute(cameraId: string, action: PtzAction, speed = 1, durationMs?: number) {
@@ -105,6 +131,8 @@ export class PtzService {
         vectorZoom,
         durationMs: 0
       }));
+      // Prune sau khi lưu
+      this.pruneLogs(cameraId).catch(() => {/* ignore prune errors */});
       return { ok: true, cameraId, stopped: true };  
     }
 
@@ -132,6 +160,8 @@ export class PtzService {
       vectorZoom,
       durationMs: durationMs || null,
     }));
+    // Prune async (không chặn response)
+    this.pruneLogs(cameraId).catch(() => {/* ignore prune errors */});
 
     return {
       ok: true,
