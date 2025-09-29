@@ -8,6 +8,8 @@ Quản lý sự kiện liên quan camera: MOTION, ERROR, ALERT... Có thể tíc
 | POST | /events | Tạo sự kiện |
 | GET | /events | Danh sách |
 | GET | /events/:id | Chi tiết |
+| PUT | /events/:id/ack | Ack sự kiện |
+| POST | /events/simulate-motion/:cameraId | Giả lập motion |
 
 ## Body POST mẫu
 ```json
@@ -18,8 +20,16 @@ Quản lý sự kiện liên quan camera: MOTION, ERROR, ALERT... Có thể tíc
 ```powershell
 $token = (curl -Method POST -Uri http://localhost:3000/auth/login -Body '{"username":"admin","password":"admin123"}' -ContentType 'application/json').Content | ConvertFrom-Json | Select -ExpandProperty accessToken
 
+# Tạo event ALERT
 curl -Method POST -Uri http://localhost:3000/events -Headers @{Authorization="Bearer $token"} -Body '{"cameraId":"<id>","type":"ALERT","description":"Nhiệt độ cao"}' -ContentType 'application/json'
 
+# Giả lập motion
+curl -Method POST -Headers @{Authorization="Bearer $token"} http://localhost:3000/events/simulate-motion/<cameraId>
+
+# Ack event
+curl -Method PUT -Headers @{Authorization="Bearer $token"} http://localhost:3000/events/<eventId>/ack
+
+# Danh sách
 curl -Headers @{Authorization="Bearer $token"} http://localhost:3000/events
 ```
 
@@ -30,5 +40,6 @@ curl -Headers @{Authorization="Bearer $token"} http://localhost:3000/events
 | 400 Validation failed | type không hợp lệ |
 
 ## Ghi chú
-- Có thể thêm priority, category, ack flag.
-- Có thể đẩy sự kiện ra message queue (Kafka, Redis Stream) để xử lý tiếp.
+- Đã có ack flag: PUT /events/:id/ack.
+- Simulate motion: POST /events/simulate-motion/:cameraId.
+- Có thể mở rộng priority, category, push message queue sau.

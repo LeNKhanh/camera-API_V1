@@ -97,15 +97,23 @@ Snapshot:
 Recording:
 - POST /recordings/start (strategy RTSP|FAKE)
 - PUT /recordings/:id/stop (dừng sớm)
-- GET /recordings, /recordings/:id
+- GET /recordings?cameraId=&from=&to= (lọc)
+- GET /recordings/:id
+- GET /recordings/:id/download (tải file)
 
 Event:
 - CRUD cơ bản /events
+- PUT /events/:id/ack (đánh dấu đã xử lý)
+- POST /events/simulate-motion/:cameraId (giả lập MOTION)
 
 Stream (stub):
 - GET /streams/:cameraId/url?protocol=HLS|DASH (trả URL mô phỏng)
 
-NetSDK (mock PTZ):
+PTZ Friendly:
+- POST /cameras/:id/ptz (PAN_LEFT | PAN_RIGHT | TILT_UP | TILT_DOWN | ZOOM_IN | ZOOM_OUT | STOP)
+- GET /cameras/:id/ptz/status
+
+NetSDK (legacy mock PTZ):
 - POST /netsdk/sessions, GET /netsdk/sessions, GET /netsdk/sessions/:handle
 - PUT /netsdk/sessions/:handle/ptz
 - DELETE /netsdk/sessions/:handle

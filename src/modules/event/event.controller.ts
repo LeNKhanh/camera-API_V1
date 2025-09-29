@@ -3,7 +3,7 @@
 // - POST /events: tạo sự kiện gắn với camera
 // - GET /events?cameraId=: liệt kê theo camera hoặc tất cả
 // - GET /events/:id: chi tiết
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards, Put } from '@nestjs/common';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 
 import { Roles } from '../../common/roles.decorator';
@@ -48,5 +48,19 @@ export class EventController {
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
   get(@Param('id') id: string) {
     return this.svc.get(id);
+  }
+
+  // Ack sự kiện
+  @Put(':id/ack')
+  @Roles('ADMIN','OPERATOR')
+  ack(@Param('id') id: string) {
+    return this.svc.ack(id);
+  }
+
+  // Giả lập motion cho camera
+  @Post('/simulate-motion/:cameraId')
+  @Roles('ADMIN','OPERATOR')
+  simulate(@Param('cameraId') cameraId: string) {
+    return this.svc.simulateMotion(cameraId);
   }
 }

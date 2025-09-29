@@ -9,6 +9,7 @@ Ghi một đoạn clip từ luồng RTSP bằng FFmpeg, lưu file cục bộ.
 | GET | /recordings | Danh sách |
 | GET | /recordings/:id | Chi tiết |
 | PUT | /recordings/:id/stop | Dừng sớm một bản ghi RUNNING |
+| GET | /recordings/:id/download | Tải file mp4 |
 
 ## Body POST
 ```json
@@ -37,8 +38,11 @@ $token = (curl -Method POST -Uri http://localhost:3000/auth/login -Body '{"usern
 
 curl -Method POST -Uri http://localhost:3000/recordings/start -Headers @{Authorization="Bearer $token"} -Body '{"cameraId":"<id>","durationSec":10}' -ContentType 'application/json'
 
-# Danh sách
-curl -Headers @{Authorization="Bearer $token"} http://localhost:3000/recordings
+# Danh sách (lọc theo camera + time-range)
+curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/recordings?cameraId=<id>&from=2025-09-01T00:00:00Z&to=2025-09-29T23:59:59Z"
+
+# Tải file
+curl -O -Headers @{Authorization="Bearer $token"} http://localhost:3000/recordings/<recordingId>/download
 ```
 {"cameraId":"eb1501b3-9b2a-4768-92e7-152d17733747","strategy":"FAKE","durationSec":60,"filename":"demo_8.mp4"}
 ## Trả về (start)
@@ -62,4 +66,5 @@ curl -Headers @{Authorization="Bearer $token"} http://localhost:3000/recordings
 - Snapshot và recording dùng thư mục: `RECORD_DIR`, `SNAPSHOT_DIR`.
 - FAKE env (ghi): `FAKE_RECORD_SIZE`, `FAKE_RECORD_FPS`, `FAKE_RECORD_CODEC`, `FAKE_RECORD_QUALITY`, `FAKE_RECORD_REALTIME` (mặc định =1 bật `-re` để tạo khung hình theo thời gian thực; đặt =0 nếu muốn file sinh ra nhanh phục vụ test nhanh — lưu ý STOP khó có tác dụng vì tiến trình kết thúc gần như ngay lập tức).
 - Dừng sớm: `PUT /recordings/:id/stop` chỉ áp dụng khi status RUNNING.
+- Lọc danh sách: `GET /recordings?cameraId=&from=&to=` (from/to ISO8601, so sánh startedAt).
 - Có thể thêm audio giả lập sau (anullsrc) nếu cần.

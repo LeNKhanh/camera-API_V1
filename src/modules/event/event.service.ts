@@ -35,4 +35,17 @@ export class EventService {
     if (!ev) throw new NotFoundException('Event not found');
     return ev;
   }
+
+  // Ack sự kiện
+  async ack(id: string) {
+    const ev = await this.get(id);
+    if (ev.ack) return { ok: true, already: true };
+    await this.eventRepo.update(ev.id, { ack: true } as any);
+    return { ok: true };
+  }
+
+  // Giả lập motion: tạo sự kiện MOTION cho camera
+  async simulateMotion(cameraId: string, description?: string) {
+    return this.create({ cameraId, type: 'MOTION', description: description || 'Simulated motion' });
+  }
 }

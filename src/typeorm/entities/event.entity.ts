@@ -21,6 +21,9 @@ export class Event {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
+  @Column({ name: 'ack', type: 'boolean', default: false })
+  ack: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }
