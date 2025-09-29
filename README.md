@@ -1,6 +1,6 @@
 # Camera API (NestJS + PostgreSQL + FFmpeg)
 
-Backend REST quản lý camera / snapshot / recording / event với JWT + RBAC. Sử dụng PostgreSQL + TypeORM và FFmpeg (ffmpeg-static) cho chức năng chụp ảnh & ghi nhanh. Code có comment tiếng Việt. README này được làm gọn, các phần nâng cao (auto dò RTSP, nhiều chiến lược snapshot, watchdog, cache…) đã chuyển sang `docs/ADVANCED_SNAPSHOT.md`.
+Backend REST quản lý camera / snapshot / recording / event với JWT + RBAC. Sử dụng PostgreSQL + TypeORM và FFmpeg (ffmpeg-static) cho chức năng chụp ảnh & ghi nhanh. 
 
 ## Thành phần chính
 - NestJS Modules: Auth, Camera, Snapshot, Recording, Event, Stream (stub), NetSDK (mock PTZ).
@@ -94,7 +94,8 @@ Snapshot:
 - GET /snapshots, /snapshots/:id
 
 Recording:
-- POST /recordings/start
+- POST /recordings/start (strategy RTSP|FAKE)
+- PUT /recordings/:id/stop (dừng sớm)
 - GET /recordings, /recordings/:id
 
 Event:
