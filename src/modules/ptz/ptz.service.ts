@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Camera } from '../../typeorm/entities/camera.entity';
+import { PtzLog } from '../../typeorm/entities/ptz-log.entity';
 
 // Runtime enum object (dùng cho class-validator IsEnum)
 export const PtzActions = {
@@ -24,11 +25,26 @@ interface ActiveMove {
 @Injectable()
 export class PtzService {
   private active = new Map<string, ActiveMove>();
-  constructor(@InjectRepository(Camera) private readonly camRepo: Repository<Camera>) {}
+  // Throttle: lưu timestamp lệnh cuối theo cameraId
+  private lastCommandAt = new Map<string, number>();
+  private throttleMs = 200; // tối thiểu 200ms giữa 2 lệnh
+
+  constructor(
+    @InjectRepository(Camera) private readonly camRepo: Repository<Camera>,
+    @InjectRepository(PtzLog) private readonly logRepo: Repository<PtzLog>,
+  ) {}
 
   async execute(cameraId: string, action: PtzAction, speed = 1, durationMs?: number) {
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });
     if (!cam) throw new NotFoundException('Camera not found');
+
+    // Throttle đơn giản tránh spam quá nhanh
+    const now = Date.now();
+    const last = this.lastCommandAt.get(cameraId) || 0;
+    if (now - last < this.throttleMs) {
+      return { ok: false, throttled: true, minIntervalMs: this.throttleMs };
+    }
+    this.lastCommandAt.set(cameraId, now);
 
     // Mapping hành động -> lệnh Dahua giả lập
     const map: Record<PtzAction, string> = {
@@ -41,11 +57,35 @@ export class PtzService {
       STOP: 'DH_PTZ_STOP'
     } as const;
 
+    // Mapping speed -> vector pan/tilt/zoom (-1..1 * speed)
+    let vectorPan = 0, vectorTilt = 0, vectorZoom = 0;
+    switch (action) {
+      case 'PAN_LEFT': vectorPan = -speed; break;
+      case 'PAN_RIGHT': vectorPan = speed; break;
+      case 'TILT_UP': vectorTilt = speed; break;
+      case 'TILT_DOWN': vectorTilt = -speed; break;
+      case 'ZOOM_IN': vectorZoom = speed; break;
+      case 'ZOOM_OUT': vectorZoom = -speed; break;
+      case 'STOP':
+        // STOP resets vectors
+        vectorPan = 0; vectorTilt = 0; vectorZoom = 0; break;
+    }
+
     if (action === 'STOP') {
       const prev = this.active.get(cameraId);
       if (prev?.timeout) clearTimeout(prev.timeout);
       this.active.delete(cameraId);
-      return { ok: true, cameraId, stopped: true };
+      // Log STOP
+      await this.logRepo.save(this.logRepo.create({
+        camera: cam,
+        action,
+        speed,
+        vectorPan,
+        vectorTilt,
+        vectorZoom,
+        durationMs: 0
+      }));
+      return { ok: true, cameraId, stopped: true };  
     }
 
     // Hủy chuyển động cũ nếu còn
@@ -62,12 +102,24 @@ export class PtzService {
     this.active.set(cameraId, record);
 
     // Trả về giả lập (sau này có thể gọi ONVIF SDK thật)
+    // Ghi log
+    await this.logRepo.save(this.logRepo.create({
+      camera: cam,
+      action,
+      speed,
+      vectorPan,
+      vectorTilt,
+      vectorZoom,
+      durationMs: durationMs || null,
+    }));
+
     return {
       ok: true,
       cameraId,
       action,
       vendorCommand: map[action],
       speed,
+      vector: { pan: vectorPan, tilt: vectorTilt, zoom: vectorZoom },
       willAutoStopAfterMs: durationMs || null,
       startedAt
     };

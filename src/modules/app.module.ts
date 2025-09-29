@@ -22,6 +22,7 @@ import { Camera } from '../typeorm/entities/camera.entity';
 import { Recording } from '../typeorm/entities/recording.entity';
 import { Event } from '../typeorm/entities/event.entity';
 import { Snapshot } from '../typeorm/entities/snapshot.entity';
+import { PtzLog } from '../typeorm/entities/ptz-log.entity';
 
 @Module({
   imports: [
@@ -36,7 +37,7 @@ import { Snapshot } from '../typeorm/entities/snapshot.entity';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
   database: process.env.DB_NAME || 'Camera_api',
-      entities: [User, Camera, Recording, Event, Snapshot],
+  entities: [User, Camera, Recording, Event, Snapshot, PtzLog],
       synchronize: true, // Dev: tự sync schema; Prod: nên dùng migration
       logging: ['error', 'warn'],
     }),

@@ -1,32 +1,32 @@
-// ESLint v9 flat config bridging using @eslint/eslintrc FlatCompat so we can keep legacy .eslintrc.js style.
-const { FlatCompat } = require('@eslint/eslintrc');
-const compat = new FlatCompat({ baseDirectory: __dirname });
-
-const legacy = require('./.eslintrc.js');
-// Extract legacy pieces we need
-const { rules, settings } = legacy;
+const tsParser = require('@typescript-eslint/parser');
+const tsPlugin = require('@typescript-eslint/eslint-plugin');
+const importPlugin = require('eslint-plugin-import');
 
 module.exports = [
-	// Base extends converted
-	...compat.extends(
-		'eslint:recommended',
-		'plugin:@typescript-eslint/recommended',
-		'plugin:import/recommended',
-		'plugin:import/typescript',
-		'prettier'
-	),
-	{
-		files: ['**/*.ts'],
-		ignores: ['dist/**', 'node_modules/**'],
-		languageOptions: {
-			parser: require('@typescript-eslint/parser'),
-			parserOptions: { sourceType: 'module', ecmaVersion: 'latest' }
-		},
-		plugins: {
-			'@typescript-eslint': require('@typescript-eslint/eslint-plugin'),
-			import: require('eslint-plugin-import'),
-		},
-		rules,
-		settings,
-	}
+  {
+    files: ['**/*.ts'],
+    ignores: ['dist/**', 'node_modules/**'],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 2020,
+        sourceType: 'module'
+      }
+    },
+    plugins: {
+      '@typescript-eslint': tsPlugin,
+      import: importPlugin
+    },
+    settings: {
+      'import/resolver': {
+        typescript: { project: './tsconfig.json' },
+        node: { extensions: ['.ts', '.js', '.json'] }
+      }
+    },
+    rules: {
+      'import/order': ['warn', { groups: ['builtin','external','internal','parent','sibling','index'], 'newlines-between': 'always' }],
+      '@typescript-eslint/explicit-module-boundary-types': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
+    }
+  }
 ];

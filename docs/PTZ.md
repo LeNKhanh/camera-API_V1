@@ -1,4 +1,4 @@
-# PTZ (Pan / Tilt / Zoom) – Friendly API
+# PTZ (Pan / Tilt / Zoom) – API
 
 ## Mục tiêu
 Cung cấp endpoint điều khiển PTZ thân thiện theo `cameraId`, không cần session giả lập.
@@ -44,8 +44,56 @@ Hoặc `{ "moving": false }` nếu không có chuyển động đang active.
 { "action": "STOP" }
 ```
 
-## Hướng mở rộng
-1. ONVIF ContinuousMove / RelativeMove / Stop.
-2. Mapping speed → vector pan/tilt/zoom.
-3. Throttle tránh spam lệnh.
-4. Ghi log lịch sử PTZ vào bảng riêng.
+## Hướng mở rộng (ĐÃ TRIỂN KHAI MỘT PHẦN)
+1. ONVIF ContinuousMove / RelativeMove / Stop. (CHƯA)
+2. Mapping speed → vector pan/tilt/zoom. (ĐÃ LÀM)
+3. Throttle tránh spam lệnh. (ĐÃ LÀM - 200ms mặc định)
+4. Ghi log lịch sử PTZ vào bảng riêng `ptz_logs`. (ĐÃ LÀM)
+
+### Mapping speed → vector
+Server chuyển action + speed thành vector:
+
+| Action | vectorPan | vectorTilt | vectorZoom |
+|--------|-----------|-----------|------------|
+| PAN_LEFT  | -speed | 0 | 0 |
+| PAN_RIGHT | speed  | 0 | 0 |
+| TILT_UP   | 0 | speed | 0 |
+| TILT_DOWN | 0 | -speed | 0 |
+| ZOOM_IN   | 0 | 0 | speed |
+| ZOOM_OUT  | 0 | 0 | -speed |
+| STOP      | 0 | 0 | 0 |
+
+Phản hồi API bổ sung trường:
+```json
+"vector": { "pan": -2, "tilt": 0, "zoom": 0 }
+```
+
+### Throttle
+Nếu gửi lệnh quá nhanh (<200ms so với lệnh trước cùng camera) server trả:
+```json
+{ "ok": false, "throttled": true, "minIntervalMs": 200 }
+```
+Có thể điều chỉnh sau bằng cấu hình (hiện hard-code trong service).
+
+### Ghi log lịch sử PTZ
+Entity mới `ptz_logs` gồm:
+| Trường | Giải thích |
+|--------|------------|
+| id | UUID |
+| camera_id | FK camera (CASCADE) |
+| action | PAN_LEFT...STOP |
+| speed | int |
+| vector_pan | int (-speed..speed) |
+| vector_tilt | int |
+| vector_zoom | int |
+| duration_ms | thời gian dự kiến auto stop (nullable) |
+| created_at | timestamp |
+
+Mỗi lệnh (kể cả STOP) đều được insert một bản ghi.
+
+### Lưu ý migration
+Dev: `synchronize=true` tự tạo bảng. Prod: cần sinh migration:
+```
+npm run migration:generate
+npm run migration:run
+```

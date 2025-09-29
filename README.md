@@ -112,6 +112,9 @@ Stream (stub):
 PTZ Friendly:
 - POST /cameras/:id/ptz (PAN_LEFT | PAN_RIGHT | TILT_UP | TILT_DOWN | ZOOM_IN | ZOOM_OUT | STOP)
 - GET /cameras/:id/ptz/status
+	- Mapping speed → vector pan/tilt/zoom (trả về trường vector)
+	- Throttle 200ms tránh spam (trả { ok:false, throttled:true })
+	- Ghi log lịch sử vào bảng ptz_logs
 
 NetSDK (legacy mock PTZ):
 - POST /netsdk/sessions, GET /netsdk/sessions, GET /netsdk/sessions/:handle
