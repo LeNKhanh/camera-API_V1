@@ -66,32 +66,5 @@ Live stream	PARTIAL	Chỉ trả URL giả; chưa có ffmpeg proxy
 PTZ control	MOCK	Cần API thân thiện theo cameraId
 Playback	PARTIAL	Có ghi nhưng chưa có download + lọc thời gian
 Sự kiện	OK (cơ bản)	Chưa có ack & nguồn tự động
-8. Đề xuất lộ trình thực thi (không cần dịch vụ trung gian ngay)
-Bước 1: PTZ thân thiện
-
-Tạo ptz module: service + controller.
-Actions hỗ trợ: PAN_LEFT, PAN_RIGHT, TILT_UP, TILT_DOWN, ZOOM_IN, ZOOM_OUT, STOP.
-Duration optional (nếu gửi duration → tự stop).
-Bước 2: Playback file & listing
-
-GET /recordings/:id/download stream file.
-GET /recordings?cameraId&from=ISO&to=ISO lọc.
-Bước 3: Live minimal MJPEG/HLS
-
-GET /streams/:cameraId/mjpeg spawn ffmpeg → multipart JPEG.
-(Optional) HLS local: spawn background ffmpeg rewriting segments; serve static.
-Bước 4: Events nâng cao
-
-Migration thêm cột ack boolean default false.
-POST /events/:id/ack.
-POST /cameras/:id/simulate-motion tạo event type MOTION.
-Bước 5: Verify camera endpoint
-
-POST /cameras/:id/verify chạy ffprobe nhanh (timeout ngắn) để báo reachable / auth fail / timeout.
-9. tiếp tục
-B) Playback (download + filter thời gian)
-C) Live MJPEG proxy
-D) Event ack + simulate
-E) Verify camera endpoint
 
 

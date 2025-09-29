@@ -122,7 +122,7 @@ FAKE:
 - Có thể bổ sung cache từng vendor đã thử để giảm lần sau.
 - Nên thêm structured logger (winston/pino) nếu triển khai prod.
 
-## Hướng mở rộng
+## mở rộng
 1. Lưu snapshot vào object storage thay vì local.
 2. Thêm API phục vụ trực tiếp file ảnh qua HTTP (hiện chỉ trả metadata path).
 3. Thêm retry schedule async thay vì blocking request nếu cần.

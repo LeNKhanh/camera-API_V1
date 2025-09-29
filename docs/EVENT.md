@@ -38,6 +38,7 @@ curl -Headers @{Authorization="Bearer $token"} http://localhost:3000/events
 |-----|-------------|
 | 404 Camera not found | cameraId sai |
 | 400 Validation failed | type không hợp lệ |
+| 401 Unauthorized | Thiếu header Authorization Bearer hoặc JWT_SECRET mismatch giữa auth.module và jwt.strategy |
 
 ## Ghi chú
 - Đã có ack flag: PUT /events/:id/ack.

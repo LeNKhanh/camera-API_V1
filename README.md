@@ -199,18 +199,5 @@ Giới hạn hiện tại:
 - PTZ trả về JSON xác nhận lệnh; không gửi tới thiết bị thật.
 - Snapshot qua SDK bị vô hiệu (trả lỗi `SNAPSHOT_UNSUPPORTED_NO_SDK`). Bạn vẫn có thể dùng RTSP + FFmpeg snapshot trong module `snapshot`.
 
-Endpoints REST hiện tại (JWT + RBAC):
-- POST /netsdk/sessions { ip, port, username, password } → tạo session (handle)
-- GET /netsdk/sessions → liệt kê tất cả session trong bộ nhớ
-- GET /netsdk/sessions/:handle → chi tiết 1 session
-- DELETE /netsdk/sessions/:handle → logout (huỷ session)
-- PUT /netsdk/sessions/:handle/ptz { channel, cmd, p1?, p2?, p3?, stop? } → lệnh PTZ giả lập
-- POST /netsdk/sessions/:handle/snapshots { channel, filePath } → hiện trả `{ ok:false, error: 'SNAPSHOT_UNSUPPORTED_NO_SDK' }`
 
-Định hướng mở rộng (nếu cần thật sự nói chuyện với thiết bị):
-1) Tích hợp ONVIF: dùng thư viện onvif để thực hiện PTZ/snapshot thật. Thay logic giả lập trong `NetSdkService` bằng gọi ONVIF profile.
-2) Viết adapter SDK riêng bằng Node-API (C++ addon) hoặc quay lại mô hình bridge nếu cần hiệu năng cao.
-3) Thêm persistent store cho sessions (Redis) nếu muốn scale nhiều instance.
-
-Muốn PTZ thật: tích hợp ONVIF hoặc SDK native riêng (xem advanced docs nếu bổ sung sau).
 

@@ -6,6 +6,8 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
+    // Quan trọng: secret phải TRÙNG với secret khai báo trong JwtModule.register ở auth.module.ts
+    // Trước đây file này dùng 'devhuhu_secret' gây mismatch -> 401 Unauthorized dù token đúng.
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
