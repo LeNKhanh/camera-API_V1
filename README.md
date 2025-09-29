@@ -188,7 +188,9 @@ Lưu ý: cột ip_address là unique. Nếu đã tồn tại, tạo mới với 
 Yêu cầu: Camera có RTSP hợp lệ.
 1) Chụp ảnh (ADMIN/OPERATOR)
 	- POST /snapshots/capture
-	- Body: { "cameraId": "<id camera>", "filename": "tu_chon.jpg" }
+	- Body tối thiểu: { "cameraId": "<id camera>", "filename": "tu_chon.jpg" }
+	- Có thể override trực tiếp đường dẫn RTSP để test nhanh (bỏ qua auto-detect):
+	  { "cameraId": "<id>", "rtspUrl": "rtsp://user:pass@ip:554/....", "filename": "test.jpg" }
 	- Mong đợi: trả về snapshot với storagePath (đường dẫn file). Ảnh được lưu vào SNAPSHOT_DIR (mặc định C:\\tmp).
 2) Danh sách snapshot
 	- GET /snapshots?cameraId=<id camera> → lọc theo camera.
@@ -198,6 +200,8 @@ Yêu cầu: Camera có RTSP hợp lệ.
 Gợi ý xử lý sự cố:
 - Nếu lỗi kết nối: kiểm tra `rtspUrl` hoặc thông tin `username/password/ip/rtspPort` của camera.
 - Có thể tăng `-stimeout`, `-analyzeduration`, `-probesize` nếu mạng chậm.
+- Bật dò & cache RTSP tự động: `SNAPSHOT_CACHE_RTSP=1` (ghi vào cột rtsp_url). Ghi đè: `SNAPSHOT_CACHE_OVERRIDE=1`.
+- Thử thêm cổng RTSP phụ: cấu hình `ALT_RTSP_PORTS=8554,10554` (ví dụ) để service thử thêm các port đó.
 
 ### 5) Recording (ghi video từ RTSP)
 1) Bắt đầu ghi (ADMIN/OPERATOR)

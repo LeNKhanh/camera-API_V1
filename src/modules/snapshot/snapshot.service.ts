@@ -40,37 +40,48 @@ export class SnapshotService {
     return 'UNKNOWN';
   }
 
-  async capture(cameraId: string, filename?: string) {
+  async capture(cameraId: string, filename?: string, overrideRtsp?: string) {
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });
     if (!cam) throw new NotFoundException('Camera not found');
     // Xây dựng danh sách ứng viên RTSP. Nếu đã có cam.rtspUrl thì chỉ cần một phần tử.
     let rtspCandidates: string[] = [];
-    if (cam.rtspUrl?.trim()) {
+    if (overrideRtsp?.trim()) {
+      rtspCandidates = [overrideRtsp.trim()];
+    } else if (cam.rtspUrl?.trim()) {
       rtspCandidates = [cam.rtspUrl.trim()];
     } else {
       if (!cam.username || !cam.password) {
         throw new Error('Camera missing rtspUrl or username/password to build RTSP URL');
       }
-      const baseAuth = `${encodeURIComponent(cam.username)}:${encodeURIComponent(cam.password)}@${cam.ipAddress}:${cam.rtspPort}`;
+      const altPorts = (process.env.ALT_RTSP_PORTS || '')
+        .split(',')
+        .map(p => p.trim())
+        .filter(p => /^\d+$/.test(p) && p !== String(cam.rtspPort));
+      const basePortList = [String(cam.rtspPort), ...altPorts];
+      // Generate baseAuth variants for each port
+      const baseAuthPorts = basePortList.map(port => `${encodeURIComponent(cam.username!)}:${encodeURIComponent(cam.password!)}@${cam.ipAddress}:${port}`);
       const vendor = (cam.vendor || '').toLowerCase();
-      if (vendor.includes('hik')) {
+      for (const auth of baseAuthPorts) {
+        if (vendor.includes('hik')) {
+          rtspCandidates.push(
+            `rtsp://${auth}/Streaming/Channels/101`,
+            `rtsp://${auth}/Streaming/Channels/102`,
+          );
+        } else if (vendor.includes('dahua')) {
+          rtspCandidates.push(
+            `rtsp://${auth}/cam/realmonitor?channel=1&subtype=0`,
+            `rtsp://${auth}/cam/realmonitor?channel=1&subtype=1`,
+            `rtsp://${auth}/cam/realmonitor?channel=1&subtype=2`,
+          );
+        } else if (vendor.includes('onvif')) {
+          rtspCandidates.push(`rtsp://${auth}/onvif-media/media.amp`);
+        }
+        // Generic fallback cho mỗi port
         rtspCandidates.push(
-          `rtsp://${baseAuth}/Streaming/Channels/101`,
-          `rtsp://${baseAuth}/Streaming/Channels/102`,
+          `rtsp://${auth}/live`,
+          `rtsp://${auth}/`,
         );
-      } else if (vendor.includes('dahua')) {
-        rtspCandidates.push(
-          `rtsp://${baseAuth}/cam/realmonitor?channel=1&subtype=0`,
-          `rtsp://${baseAuth}/cam/realmonitor?channel=1&subtype=1`,
-        );
-      } else if (vendor.includes('onvif')) {
-        rtspCandidates.push(`rtsp://${baseAuth}/onvif-media/media.amp`);
       }
-      // Fallback chung
-      rtspCandidates.push(
-        `rtsp://${baseAuth}/live`,
-        `rtsp://${baseAuth}/`,
-      );
       if (process.env.DEBUG_SNAPSHOT) {
         // eslint-disable-next-line no-console
         console.debug('[SNAPSHOT] rtsp candidate list', rtspCandidates);

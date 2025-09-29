@@ -19,6 +19,11 @@ class SnapshotCaptureDto {
   @IsOptional()
   @IsString()
   filename?: string; // tên file tùy chọn
+
+  // Cho phép override trực tiếp RTSP URL để test nhanh (bỏ qua candidate tự build)
+  @IsOptional()
+  @IsString()
+  rtspUrl?: string;
 }
 
 class SnapshotQueryDto {
@@ -36,7 +41,7 @@ export class SnapshotController {
   @Post('capture')
   @Roles('ADMIN', 'OPERATOR')
   capture(@Body() dto: SnapshotCaptureDto) {
-    return this.svc.capture(dto.cameraId, dto.filename);
+    return this.svc.capture(dto.cameraId, dto.filename, dto.rtspUrl);
   }
 
   // Danh sách snapshot theo camera
