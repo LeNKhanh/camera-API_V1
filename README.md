@@ -89,6 +89,13 @@ Auth:
 Camera:
 - CRUD: /cameras
 - Verify kết nối RTSP: GET /cameras/:id/verify (ffmpeg thử bắt 1 frame, phân loại OK / AUTH / TIMEOUT / CONN / NOT_FOUND)
+ - Bộ lọc nâng cao (query params tùy chọn):
+	 - enabled=true|false
+	 - name=<chuỗi> (LIKE, không phân biệt hoa thường)
+	 - vendor=<vendor> hoặc vendors=vendor1,vendor2
+	 - createdFrom=YYYY-MM-DD (& createdTo=YYYY-MM-DD)
+	 - page & pageSize (pagination, trả kèm paging metadata khi dùng)
+	 - sortBy=createdAt|name|vendor & sortDir=ASC|DESC
 
 Snapshot:
 - POST /snapshots/capture (strategy mặc định RTSP, có FAKE để dev offline)
@@ -113,8 +120,8 @@ PTZ Friendly:
 - POST /cameras/:id/ptz (PAN_LEFT | PAN_RIGHT | TILT_UP | TILT_DOWN | ZOOM_IN | ZOOM_OUT | STOP)
 - GET /cameras/:id/ptz/status
 	- Mapping speed → vector pan/tilt/zoom (trả về trường vector)
-	- Throttle 200ms tránh spam (trả { ok:false, throttled:true })
-	- Ghi log lịch sử vào bảng ptz_logs
+	- Throttle (mặc định 200ms, ENV: PTZ_THROTTLE_MS; debug: PTZ_THROTTLE_DEBUG=1 trả lastDeltaMs)
+	- Ghi log lịch sử vào bảng ptz_logs (giữ tối đa 5 log gần nhất mỗi camera – ENV: PTZ_LOG_MAX)
 
 NetSDK (legacy mock PTZ):
 - POST /netsdk/sessions, GET /netsdk/sessions, GET /netsdk/sessions/:handle
@@ -135,7 +142,7 @@ Lưu ý: Stream cần hạ tầng streaming thực tế (SRS/nginx-rtmp/HLS segm
 
 ## Lược đồ ngắn gọn
 Entities chính: users, cameras, snapshots, recordings, events.
-Mở rộng thêm: cameras.vendor, cameras.sdk_port; recordings.status (PENDING→RUNNING→COMPLETED/FAILED).
+Mở rộng thêm: cameras.vendor, cameras.sdk_port; recordings.status (PENDING→RUNNING→COMPLETED/FAILED); ptz_logs (lịch sử PTZ, vector & speed) và retention tự động.
 
 ## Ghi chú triển khai
 - Dev bật synchronize=true; Prod dùng migrations.
@@ -144,6 +151,21 @@ Mở rộng thêm: cameras.vendor, cameras.sdk_port; recordings.status (PENDING�
 - Logic snapshot nâng cao: xem `docs/ADVANCED_SNAPSHOT.md`.
 - Camera IP validation: kiểm tra chặt IPv4 & IPv6; sai định dạng trả 400.
 - Endpoint /cameras/:id/verify: dùng ffmpeg kiểm tra reachability nhanh (timeout tùy `CAMERA_VERIFY_TIMEOUT_MS`).
+
+### Biến môi trường quan trọng (tham khảo nhanh)
+| ENV | Mô tả | Mặc định |
+|-----|-------|----------|
+| CAMERA_VERIFY_TIMEOUT_MS | Timeout verify RTSP | 4000 |
+| SNAPSHOT_DIR | Thư mục lưu snapshot | ./snapshots |
+| RECORD_DIR | Thư mục lưu recording | ./recordings |
+| SNAPSHOT_CACHE_RTSP | Bật cache RTSP snapshot | 0 |
+| SNAPSHOT_CACHE_OVERRIDE | Ghi đè file cache nếu có | 0 |
+| PTZ_THROTTLE_MS | Khoảng cách tối thiểu giữa 2 lệnh PTZ (ms) | 200 |
+| PTZ_THROTTLE_DEBUG | 1: trả thêm lastDeltaMs | 0 |
+| PTZ_LOG_MAX | Số log PTZ tối đa mỗi camera | 5 |
+| AUTO_PORT | 1: tự động tìm port trống nếu 3000 bận | 0 |
+
+> Ghi chú: Production nên tắt `synchronize` và dùng migrations để đảm bảo schema ổn định.
 
 ## Bảo mật & RBAC
 JWT + RolesGuard với vai trò ADMIN / OPERATOR / VIEWER.
