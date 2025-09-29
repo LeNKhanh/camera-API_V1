@@ -24,6 +24,19 @@ export class SnapshotService {
     @InjectRepository(Snapshot) private readonly snapRepo: Repository<Snapshot>,
   ) {}
 
+  // Phân loại lỗi FFmpeg để client đọc dễ hơn
+  // Các mã: AUTH, TIMEOUT, CONN, NOT_FOUND, FORMAT, PERMISSION, UNKNOWN
+  private classifyFfmpegError(stderr: string): string {
+    const s = stderr.toLowerCase();
+    if (/401|unauthorized|auth/i.test(stderr)) return 'AUTH';
+    if (/timed? out|stimeout|timeout/.test(s)) return 'TIMEOUT';
+    if (/connection refused|no route to host|network is unreachable|unable to connect|connection timed out/.test(s)) return 'CONN';
+    if (/404|not found|server returned 404/.test(s)) return 'NOT_FOUND';
+    if (/invalid data|could not find codec parameters|moov atom not found|malformed/.test(s)) return 'FORMAT';
+    if (/permission denied|access denied/.test(s)) return 'PERMISSION';
+    return 'UNKNOWN';
+  }
+
   async capture(cameraId: string, filename?: string) {
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });
     if (!cam) throw new NotFoundException('Camera not found');
@@ -95,11 +108,12 @@ export class SnapshotService {
     }
     if (lastErr) {
       const msg = (lastErr as Error).message || String(lastErr);
+      const reason = this.classifyFfmpegError(msg);
       // Mask credential in RTSP when logging
       const masked = rtsp.replace(/:\/\/[\w%.-]+:[^@]+@/, '://***:***@');
       // eslint-disable-next-line no-console
-      console.error('[SNAPSHOT] capture failed', { cameraId, rtsp: masked, error: msg });
-      throw new InternalServerErrorException(`SNAPSHOT_CAPTURE_FAILED: ${msg}`);
+      console.error('[SNAPSHOT] capture failed', { cameraId, rtsp: masked, reason, error: msg });
+      throw new InternalServerErrorException(`SNAPSHOT_CAPTURE_FAILED:${reason}: ${msg}`);
     }
 
     const snap = this.snapRepo.create({ camera: cam, storagePath: outPath } as any);
