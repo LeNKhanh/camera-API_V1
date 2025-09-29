@@ -26,7 +26,7 @@ export class RecordingService {
   ) {}
 
   // Lưu tiến trình đang chạy để có thể STOP
-  private active: Map<string, { proc: ReturnType<typeof spawn>; strategy: string; started: number }> = new Map();
+  private active: Map<string, { proc: ReturnType<typeof spawn>; strategy: string; started: number; natural?: boolean; userStop?: boolean; timer?: NodeJS.Timeout }> = new Map();
 
   // Phân loại stderr ffmpeg tương tự snapshot để dễ debug
   private classifyFfmpegError(stderr: string): string {
@@ -63,29 +63,23 @@ export class RecordingService {
     } as Partial<Recording>);
     rec = await this.recRepo.save(rec);
 
-    // Chiến lược FAKE: tạo video synthetic (testsrc) để test khi không có camera thật
     if (strat === 'FAKE') {
       const size = (process.env.FAKE_RECORD_SIZE || '1280x720').match(/^\d+x\d+$/) ? process.env.FAKE_RECORD_SIZE! : '1280x720';
       const fr = parseInt(process.env.FAKE_RECORD_FPS || '15', 10);
       const q = process.env.FAKE_RECORD_QUALITY || '23';
       const codec = process.env.FAKE_RECORD_CODEC || 'libx264';
       const filters = [
-        `testsrc2=duration=${durationSec}:size=${size}:rate=${fr}`,
-        `testsrc=duration=${durationSec}:size=${size}:rate=${fr}`,
-        `color=c=black:s=${size}:d=${durationSec}`,
+        `testsrc2=size=${size}:rate=${fr}`,
+        `testsrc=size=${size}:rate=${fr}`,
+        `color=c=black:s=${size}`,
       ];
-
-      // Set RUNNING ngay để response không là FAILED/PENDING tức thì
-  await this.recRepo.update(rec.id, { status: 'RUNNING', strategy: 'FAKE' } as any);
-
+      await this.recRepo.update(rec.id, { status: 'RUNNING' } as any);
       const runWithFilter = (idx: number) => {
         const filter = filters[idx];
         const args = [
           '-hide_banner',
-          // -re để phát theo tốc độ thực tế thay vì render cực nhanh (giúp STOP có ý nghĩa)
           ...(process.env.FAKE_RECORD_REALTIME === '0' ? [] : ['-re']),
           '-f', 'lavfi', '-i', filter,
-          '-t', String(durationSec),
           '-pix_fmt', 'yuv420p',
           ...(codec ? ['-c:v', codec] : []),
           ...(codec === 'libx264' ? ['-preset', 'veryfast', '-crf', q] : []),
@@ -93,25 +87,42 @@ export class RecordingService {
         ];
         if (process.env.DEBUG_RECORDING) console.debug(`[RECORDING][FAKE] try filter[${idx}]`, filter);
         const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
-        // Ghi nhận tiến trình để STOP hoạt động
-        this.active.set(rec.id, { proc: child, strategy: 'FAKE', started: Date.now() });
+        const ctx = { proc: child, strategy: 'FAKE', started: Date.now() } as any;
+        this.active.set(rec.id, ctx);
         let stderr = '';
         child.stderr?.on('data', d => { stderr += d.toString(); if (process.env.DEBUG_RECORDING) console.debug('[RECORDING][FAKE][stderr]', d.toString().trim()); });
+        ctx.timer = setTimeout(() => {
+          const a = this.active.get(rec.id);
+          if (!a || a.userStop) return;
+          a.natural = true;
+          try { a.proc.kill('SIGINT'); } catch {}
+        }, durationSec * 1000);
         child.on('close', async (code) => {
-          if (code === 0) {
-            await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
-            this.active.delete(rec.id);
-            return;
-          }
-          if (idx < filters.length - 1) {
-            // Thử filter tiếp theo
-            runWithFilter(idx + 1);
-          } else {
+          const a = this.active.get(rec.id);
+            if (a?.userStop) {
+              if (a.timer) clearTimeout(a.timer);
+              this.active.delete(rec.id);
+              return;
+            }
+            if (a?.timer) clearTimeout(a.timer);
+            if (a?.natural) {
+              await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
+              this.active.delete(rec.id);
+              return;
+            }
+            if (code !== 0 && idx < filters.length - 1) {
+              runWithFilter(idx + 1);
+              return;
+            }
+            if (code === 0) {
+              await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
+              this.active.delete(rec.id);
+              return;
+            }
             const reason = this.classifyFfmpegError(stderr);
             const snippet = stderr.replace(/\s+/g, ' ').slice(0, 170);
             await this.recRepo.update(rec.id, { status: 'FAILED', endedAt: new Date(), errorMessage: `FAKE_${reason} ${snippet}` } as any);
             this.active.delete(rec.id);
-          }
         });
       };
       runWithFilter(0);
@@ -197,11 +208,14 @@ export class RecordingService {
       return { id: rec.id, status: rec.status, message: 'NO_ACTIVE_PROCESS' };
     }
     try {
+      info.userStop = true; // đánh dấu để close handler không override trạng thái
+      if (info.timer) clearTimeout(info.timer);
       if (info.proc) {
-        info.proc.kill('SIGKILL');
+        info.proc.kill('SIGINT');
       }
     } catch {}
     await this.recRepo.update(rec.id, { status: 'STOPPED', endedAt: new Date(), errorMessage: 'STOPPED_BY_USER' } as any);
+    // Xóa map ngay (close handler sẽ thấy userStop và return nếu đến sau)
     this.active.delete(rec.id);
     return { id: rec.id, status: 'STOPPED' };
   }

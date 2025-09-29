@@ -40,7 +40,7 @@ curl -Method POST -Uri http://localhost:3000/recordings/start -Headers @{Authori
 # Danh sách
 curl -Headers @{Authorization="Bearer $token"} http://localhost:3000/recordings
 ```
-
+{"cameraId":"eb1501b3-9b2a-4768-92e7-152d17733747","strategy":"FAKE","durationSec":60,"filename":"demo_8.mp4"}
 ## Trả về (start)
 ```json
 { "id": "...", "status": "PENDING", "storagePath": "C:/tmp/rec_x.mp4", "strategy": "RTSP" }
