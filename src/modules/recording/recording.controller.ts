@@ -19,6 +19,16 @@ class StartRecordingDto {
   @IsInt()
   @Min(1)
   durationSec?: number = 60; // thời lượng mặc định 60s
+
+  // Chiến lược: RTSP (mặc định) | FAKE (generate synthetic) | future SDK
+  @IsOptional()
+  @IsString()
+  strategy?: string;
+
+  // Tên file tùy chọn
+  @IsOptional()
+  @IsString()
+  filename?: string;
 }
 
 @Controller('recordings')
@@ -30,7 +40,7 @@ export class RecordingController {
   @Post('start')
   @Roles('ADMIN', 'OPERATOR')
   start(@Body() dto: StartRecordingDto) {
-    return this.svc.startRecording(dto.cameraId, dto.durationSec ?? 60);
+    return this.svc.startRecording(dto.cameraId, dto.durationSec ?? 60, dto.strategy, dto.filename);
   }
 
   // Danh sách bản ghi theo camera

@@ -38,15 +38,14 @@ export class RecordingService {
   }
 
   // Bắt đầu ghi từ camera trong durationSec giây
-  async startRecording(cameraId: string, durationSec: number) {
+  async startRecording(cameraId: string, durationSec: number, strategy?: string, filename?: string) {
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });
     if (!cam) throw new NotFoundException('Camera not found');
-    // Build RTSP url nếu chưa có sẵn
-    const rtsp = cam.rtspUrl || `rtsp://${cam.username}:${cam.password}@${cam.ipAddress}:${cam.rtspPort}`;
+    const strat = (strategy || 'RTSP').toUpperCase();
 
-  // Tạo đường dẫn output tạm/thư mục cấu hình
-  const filename = `${randomUUID()}.mp4`;
-    const outPath = join(process.env.RECORD_DIR || tmpdir(), filename);
+    // Tạo tên file (cho phép user override)
+    const finalName = filename && filename.trim().length > 0 ? filename.trim() : `${randomUUID()}.mp4`;
+    const outPath = join(process.env.RECORD_DIR || tmpdir(), finalName);
 
     // 2) Lưu bản ghi PENDING (chưa chạy xong)
     // Tạo entity ở trạng thái PENDING và lưu; dùng create() không tham số để chắc chắn kiểu đơn lẻ
@@ -60,18 +59,76 @@ export class RecordingService {
     } as Partial<Recording>);
     rec = await this.recRepo.save(rec);
 
-    // 3) Gọi FFmpeg để ghi (ưu tiên tốc độ và độ ổn định)
+    // Chiến lược FAKE: tạo video synthetic (testsrc) để test khi không có camera thật
+    if (strat === 'FAKE') {
+      const size = (process.env.FAKE_RECORD_SIZE || '1280x720').match(/^\d+x\d+$/) ? process.env.FAKE_RECORD_SIZE! : '1280x720';
+      const fr = parseInt(process.env.FAKE_RECORD_FPS || '15', 10);
+      const q = process.env.FAKE_RECORD_QUALITY || '23'; // CRF cho libx264 (nếu tái mã hoá)
+      const codec = process.env.FAKE_RECORD_CODEC || 'libx264';
+      // testsrc2 -> testsrc -> color loop
+      const candidateFilters = [
+        `testsrc2=duration=${durationSec}:size=${size}:rate=${fr}`,
+        `testsrc=duration=${durationSec}:size=${size}:rate=${fr}`,
+        `color=c=black:s=${size}:d=${durationSec}`,
+      ];
+      let chosenFilter: string | null = null; let lastErr: any;
+      for (const f of candidateFilters) {
+        // Thử nhanh xem ffmpeg có chấp nhận filter không bằng cách chuẩn bị spawn (ở đây cứ chọn filter đầu hoạt động – nếu fail sẽ tiếp tục)
+        chosenFilter = f; // ta cứ gán, nếu fail ở run thật sẽ thử cái tiếp theo
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const testArgs = ['-v', 'error', '-f', 'lavfi', '-i', f, '-t', '0.1', '-f', 'null', '-'];
+            const proc = spawn(ffmpegPath || 'ffmpeg', testArgs, { windowsHide: true });
+            let errb = '';
+            proc.stderr?.on('data', d => errb += d.toString());
+            proc.on('close', c => c === 0 ? resolve() : reject(new Error(errb)));
+            proc.on('error', reject);
+          });
+          break; // thành công
+        } catch (e) { lastErr = e; chosenFilter = null; }
+      }
+      if (!chosenFilter) {
+        await this.recRepo.update(rec.id, { status: 'FAILED', endedAt: new Date(), errorMessage: 'FAKE_FILTER_FAILED' } as any);
+        return { id: rec.id, storagePath: rec.storagePath, status: 'FAILED' };
+      }
+      const args = [
+        '-hide_banner',
+        '-f', 'lavfi',
+        '-i', chosenFilter,
+        '-t', String(durationSec),
+        '-pix_fmt', 'yuv420p',
+        ...(codec ? ['-c:v', codec] : []),
+        ...(codec === 'libx264' ? ['-preset', 'veryfast', '-crf', q] : []),
+        '-y',
+        outPath,
+      ];
+      if (process.env.DEBUG_RECORDING) console.debug('[RECORDING][FAKE] args', args.join(' '));
+      const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
+      let stderr = '';
+      child.stderr?.on('data', d => { stderr += d.toString(); if (process.env.DEBUG_RECORDING) console.debug('[RECORDING][FAKE][stderr]', d.toString().trim()); });
+      child.on('close', async (code) => {
+        if (code === 0) {
+          await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
+        } else {
+          const reason = this.classifyFfmpegError(stderr);
+            const snippet = stderr.replace(/\s+/g, ' ').slice(0, 170);
+          await this.recRepo.update(rec.id, { status: 'FAILED', endedAt: new Date(), errorMessage: `FAKE_${reason} ${snippet}` } as any);
+        }
+      });
+      return { id: rec.id, storagePath: rec.storagePath, status: rec.status };
+    }
+
+    // ---------- RTSP (mặc định) ----------
+    const rtsp = cam.rtspUrl || `rtsp://${cam.username}:${cam.password}@${cam.ipAddress}:${cam.rtspPort}`;
     const args = [
       '-hide_banner',
       '-rtsp_transport', 'tcp',
-      '-stimeout', '10000000', // 10s timeout kết nối
+      '-stimeout', '10000000',
       '-i', rtsp,
       '-t', String(durationSec),
-      // copy codec để nhanh và ít CPU nếu camera stream đã là H.264/H.265
       '-c', 'copy',
-      // giảm latency buffer
       '-fflags', 'nobuffer',
-      '-analyzeduration', '1000000', // 1s
+      '-analyzeduration', '1000000',
       '-probesize', '500000',
       outPath,
     ];
