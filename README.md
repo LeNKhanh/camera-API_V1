@@ -88,6 +88,7 @@ Auth:
 
 Camera:
 - CRUD: /cameras
+- Verify kết nối RTSP: GET /cameras/:id/verify (ffmpeg thử bắt 1 frame, phân loại OK / AUTH / TIMEOUT / CONN / NOT_FOUND)
 
 Snapshot:
 - POST /snapshots/capture (strategy mặc định RTSP, có FAKE để dev offline)
@@ -130,6 +131,8 @@ Mở rộng thêm: cameras.vendor, cameras.sdk_port; recordings.status (PENDING�
 - FFmpeg: đã bundle ffmpeg-static. Đặt `SNAPSHOT_DIR`, `RECORD_DIR` là thư mục tồn tại.
 - Auto-cache RTSP (tùy chọn): `SNAPSHOT_CACHE_RTSP=1` (+ `SNAPSHOT_CACHE_OVERRIDE=1` nếu muốn ghi đè).
 - Logic snapshot nâng cao: xem `docs/ADVANCED_SNAPSHOT.md`.
+- Camera IP validation: kiểm tra chặt IPv4 & IPv6; sai định dạng trả 400.
+- Endpoint /cameras/:id/verify: dùng ffmpeg kiểm tra reachability nhanh (timeout tùy `CAMERA_VERIFY_TIMEOUT_MS`).
 
 ## Bảo mật & RBAC
 JWT + RolesGuard với vai trò ADMIN / OPERATOR / VIEWER.

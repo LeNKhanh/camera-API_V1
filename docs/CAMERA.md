@@ -11,6 +11,7 @@ CRUD thông tin camera: IP, credential, port RTSP, vendor, trạng thái.
 | POST | /cameras | Tạo mới |
 | PATCH | /cameras/:id | Cập nhật |
 | DELETE | /cameras/:id | Xoá |
+| GET | /cameras/:id/verify | Kiểm tra nhanh kết nối RTSP (ffmpeg ping) |
 
 ## Thuộc tính chính (body POST)
 ```json
@@ -48,7 +49,23 @@ curl -Method DELETE -Uri http://localhost:3000/cameras/<id> -Headers @{Authoriza
 |----|---------|-------|
 | 404 | Không tìm thấy id | Kiểm tra lại id |
 | 409 | ip_address trùng | Sửa ipAddress khác |
+| 400 | Invalid IP address format | Kiểm tra IPv4/IPv6 hợp lệ |
 
 ## Ghi chú
 - Nên mã hoá (hoặc tối thiểu mask) credential khi log.
 - Có thể bổ sung field health/trạng thái kết nối sau.
+- IP validation: hỗ trợ IPv4 chặt (0-255 mỗi octet) & IPv6 (rút gọn ::). Sai định dạng trả 400.
+- /cameras/:id/verify dùng ffmpeg: mở RTSP TCP, lấy 1 frame trong ~timeout (CAMERA_VERIFY_TIMEOUT_MS, mặc định 4000ms) và phân loại: OK / TIMEOUT / AUTH / CONN / NOT_FOUND / UNKNOWN.
+
+### Ví dụ verify
+```powershell
+curl -Headers @{Authorization="Bearer $token"} http://localhost:3000/cameras/<id>/verify
+```
+Kết quả mẫu:
+```json
+{ "ok": true, "status": "OK", "rtsp": "rtsp://admin:admin@192.168.1.10:554", "ms": 812 }
+```
+Lỗi auth mẫu:
+```json
+{ "ok": false, "status": "AUTH", "ms": 1030 }
+```
