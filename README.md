@@ -109,6 +109,15 @@ NetSDK (mock PTZ):
 - DELETE /netsdk/sessions/:handle
 - POST /netsdk/sessions/:handle/snapshots (hiện báo không hỗ trợ)
 
+### Tài liệu chi tiết theo chức năng
+- Auth: `docs/AUTH.md`
+- Camera: `docs/CAMERA.md`
+- Snapshot cơ bản: `docs/SNAPSHOT.md`
+- Snapshot nâng cao: `docs/ADVANCED_SNAPSHOT.md`
+- Recording: `docs/RECORDING.md`
+- Event: `docs/EVENT.md`
+- Stream (stub): `docs/STREAM.md`
+
 Lưu ý: Stream cần hạ tầng streaming thực tế (SRS/nginx-rtmp/HLS segmenter); service hiện trả về URL mẫu.
 
 ## Lược đồ ngắn gọn
