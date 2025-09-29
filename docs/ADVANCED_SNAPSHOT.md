@@ -125,8 +125,6 @@ FAKE:
 ## Hướng mở rộng
 1. Lưu snapshot vào object storage thay vì local.
 2. Thêm API phục vụ trực tiếp file ảnh qua HTTP (hiện chỉ trả metadata path).
-3. Gắn nhãn (label) hoặc AI classification sau khi chụp.
-4. Thêm retry schedule async thay vì blocking request nếu cần.
+3. Thêm retry schedule async thay vì blocking request nếu cần.
 
 ---
-Tài liệu này nhằm giữ README chính ngắn gọn; cập nhật nếu logic snapshot thay đổi.

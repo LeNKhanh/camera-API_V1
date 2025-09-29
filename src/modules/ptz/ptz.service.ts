@@ -29,7 +29,7 @@ export class PtzService {
   private lastCommandAt = new Map<string, number>();
   private throttleMs = 200; // tối thiểu 200ms giữa 2 lệnh (có thể override qua ENV PTZ_THROTTLE_MS)
   private debugThrottle = false; // PTZ_THROTTLE_DEBUG=1 để trả thêm lastDeltaMs
-  private maxLogsPerCamera = 5; // giữ tối đa 5 log gần nhất mỗi camera (PTZ_LOG_MAX override)
+  private maxLogsPerCamera = 10; // giữ tối đa 10 log gần nhất mỗi camera (PTZ_LOG_MAX override)
 
   constructor(
     @InjectRepository(Camera) private readonly camRepo: Repository<Camera>,

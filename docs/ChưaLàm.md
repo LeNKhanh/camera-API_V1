@@ -93,5 +93,5 @@ B) Playback (download + filter thời gian)
 C) Live MJPEG proxy
 D) Event ack + simulate
 E) Verify camera endpoint
-F) Tất cả theo thứ tự đã đề xuất
+
 

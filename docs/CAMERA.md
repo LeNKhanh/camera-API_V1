@@ -43,8 +43,17 @@ curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?en
 # Tìm theo tên chứa 'Kho'
 curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?name=Kho"
 
-# Lọc vendor (ví dụ dahua)
+# Lọc vendor đơn (ví dụ dahua)
 curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?vendor=dahua"
+
+# Lọc nhiều vendor (dahua + hikvision)
+curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?vendors=dahua,hikvision"
+
+# Date range (ISO hoặc yyyy-mm-dd)
+curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?createdFrom=2025-09-01&createdTo=2025-09-29"
+
+# Pagination + sort (trang 2, mỗi trang 5, sort theo name ASC)
+curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?page=2&pageSize=5&sortBy=name&sortDir=ASC"
 
 # Cập nhật
 curl -Method PATCH -Uri http://localhost:3000/cameras/<id> -Headers @{Authorization="Bearer $token"} -Body '{"enabled":false}' -ContentType 'application/json'

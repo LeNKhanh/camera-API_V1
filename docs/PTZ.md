@@ -44,7 +44,7 @@ Hoặc `{ "moving": false }` nếu không có chuyển động đang active.
 { "action": "STOP" }
 ```
 
-## Hướng mở rộng (ĐÃ TRIỂN KHAI MỘT PHẦN)
+## Hướng mở rộng
 1. ONVIF ContinuousMove / RelativeMove / Stop. (CHƯA)
 2. Mapping speed → vector pan/tilt/zoom. (ĐÃ LÀM)
 3. Throttle tránh spam lệnh. (ĐÃ LÀM - 200ms mặc định)

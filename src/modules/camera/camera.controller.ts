@@ -87,11 +87,50 @@ export class CameraController {
     @Query('enabled') enabled?: string,
     @Query('name') name?: string,
     @Query('vendor') vendor?: string,
+    @Query('vendors') vendorsMulti?: string, // alias cho nhiều vendor cách nhau dấu phẩy
+    @Query('createdFrom') createdFrom?: string,
+    @Query('createdTo') createdTo?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     let enabledBool: boolean | undefined;
     if (enabled === 'true') enabledBool = true;
     else if (enabled === 'false') enabledBool = false;
-    return this.cameraService.findAll({ enabled: enabledBool, name, vendor });
+
+    // Ưu tiên vendorsMulti nếu có, fallback vendor đơn
+    const vendorParam = vendorsMulti && vendorsMulti.trim().length > 0 ? vendorsMulti : vendor;
+
+    // Parse date range (ISO hoặc yyyy-mm-dd)
+    let createdFromDate: Date | undefined;
+    if (createdFrom) {
+      const d = new Date(createdFrom);
+      if (!isNaN(d.getTime())) createdFromDate = d;
+    }
+    let createdToDate: Date | undefined;
+    if (createdTo) {
+      const d = new Date(createdTo);
+      if (!isNaN(d.getTime())) createdToDate = d;
+    }
+
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const pageSizeNum = pageSize ? parseInt(pageSize, 10) : undefined;
+
+    const sortByKey = (['createdAt','name','vendor'].includes(sortBy || '') ? sortBy : undefined) as any;
+    const sortDirKey = (sortDir === 'ASC' || sortDir === 'DESC') ? sortDir : undefined;
+
+    return this.cameraService.findAll({
+      enabled: enabledBool,
+      name,
+      vendor: vendorParam,
+      createdFrom: createdFromDate,
+      createdTo: createdToDate,
+      page: pageNum,
+      pageSize: pageSizeNum,
+      sortBy: sortByKey,
+      sortDir: sortDirKey,
+    });
   }
 
   // Chi tiết camera

@@ -18,11 +18,23 @@ export class CameraService {
     return this.repo.save(entity);
   }
 
-  // Lấy danh sách camera với filter optional: enabled, name chứa, vendor
-  async findAll(filter?: { enabled?: boolean; name?: string; vendor?: string }) {
+  // Lấy danh sách camera với filter, hỗ trợ pagination + sort + date range
+  async findAll(filter?: {
+    enabled?: boolean;
+    name?: string;
+    vendor?: string; // đơn hoặc danh sách phân cách dấu phẩy
+    createdFrom?: Date;
+    createdTo?: Date;
+    page?: number;
+    pageSize?: number;
+    sortBy?: 'createdAt' | 'name' | 'vendor';
+    sortDir?: 'ASC' | 'DESC';
+  }) {
     const qb = this.repo.createQueryBuilder('c')
-      .select(['c.id', 'c.name', 'c.ipAddress', 'c.rtspPort', 'c.enabled', 'c.codec', 'c.resolution', 'c.vendor', 'c.createdAt', 'c.updatedAt'])
-      .orderBy('c.createdAt', 'DESC');
+      .select([
+        'c.id', 'c.name', 'c.ipAddress', 'c.rtspPort', 'c.enabled', 'c.codec', 'c.resolution', 'c.vendor', 'c.createdAt', 'c.updatedAt'
+      ]);
+
     if (filter) {
       if (typeof filter.enabled === 'boolean') {
         qb.andWhere('c.enabled = :enabled', { enabled: filter.enabled });
@@ -31,9 +43,53 @@ export class CameraService {
         qb.andWhere('LOWER(c.name) LIKE :name', { name: `%${filter.name.toLowerCase()}%` });
       }
       if (filter.vendor && filter.vendor.trim().length > 0) {
-        qb.andWhere('LOWER(c.vendor) = :vendor', { vendor: filter.vendor.toLowerCase() });
+        // Hỗ trợ danh sách vendor: vendor=dahua,hikvision
+        const vendors = filter.vendor.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+        if (vendors.length === 1) {
+          qb.andWhere('LOWER(c.vendor) = :vendor', { vendor: vendors[0] });
+        } else if (vendors.length > 1) {
+          qb.andWhere('LOWER(c.vendor) IN (:...vendors)', { vendors });
+        }
+      }
+      if (filter.createdFrom) {
+        qb.andWhere('c.createdAt >= :from', { from: filter.createdFrom });
+      }
+      if (filter.createdTo) {
+        qb.andWhere('c.createdAt <= :to', { to: filter.createdTo });
       }
     }
+
+    // Sort
+    const sortBy = filter?.sortBy || 'createdAt';
+    const sortDir = filter?.sortDir || 'DESC';
+    const allowedSort: Record<string, string> = { createdAt: 'c.createdAt', name: 'c.name', vendor: 'c.vendor' };
+    qb.orderBy(allowedSort[sortBy] || 'c.createdAt', sortDir === 'ASC' ? 'ASC' : 'DESC');
+
+    // Pagination (chỉ áp dụng nếu page/pageSize hợp lệ)
+    const page = filter?.page && filter.page > 0 ? filter.page : undefined;
+    const pageSize = filter?.pageSize && filter.pageSize > 0 ? Math.min(filter.pageSize, 100) : undefined;
+    if (page && pageSize) {
+      qb.skip((page - 1) * pageSize).take(pageSize);
+      const [rows, total] = await qb.getManyAndCount();
+      return {
+        data: rows,
+        pagination: {
+          page,
+            pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize) || 1,
+        },
+        sort: { sortBy, sortDir },
+        filtersApplied: {
+          enabled: filter?.enabled,
+          name: filter?.name,
+          vendor: filter?.vendor,
+          createdFrom: filter?.createdFrom,
+          createdTo: filter?.createdTo,
+        }
+      };
+    }
+    // Không pagination: trả về mảng đơn giản (giữ backward compatibility)
     return qb.getMany();
   }
 
