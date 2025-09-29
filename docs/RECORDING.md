@@ -60,6 +60,6 @@ curl -Headers @{Authorization="Bearer $token"} http://localhost:3000/recordings
 - Nên giới hạn thời lượng tối đa để tránh chiếm ổ cứng.
 - Có thể chuyển sang job queue nếu cần scale (BullMQ / Redis).
 - Snapshot và recording dùng thư mục: `RECORD_DIR`, `SNAPSHOT_DIR`.
-- FAKE env (ghi): `FAKE_RECORD_SIZE`, `FAKE_RECORD_FPS`, `FAKE_RECORD_CODEC`, `FAKE_RECORD_QUALITY`.
+- FAKE env (ghi): `FAKE_RECORD_SIZE`, `FAKE_RECORD_FPS`, `FAKE_RECORD_CODEC`, `FAKE_RECORD_QUALITY`, `FAKE_RECORD_REALTIME` (mặc định =1 bật `-re` để tạo khung hình theo thời gian thực; đặt =0 nếu muốn file sinh ra nhanh phục vụ test nhanh — lưu ý STOP khó có tác dụng vì tiến trình kết thúc gần như ngay lập tức).
 - Dừng sớm: `PUT /recordings/:id/stop` chỉ áp dụng khi status RUNNING.
 - Có thể thêm audio giả lập sau (anullsrc) nếu cần.
