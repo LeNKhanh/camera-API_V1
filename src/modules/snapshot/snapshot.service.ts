@@ -136,11 +136,21 @@ export class SnapshotService {
       return { ok: false, error: errMsg, reason: this.classifyFfmpegError(errMsg), usedUrl: url };
     };
 	const runOnce = (runArgs: string[]) => new Promise<void>((resolve, reject) => {
+      const hardLimitMs = parseInt(process.env.SNAPSHOT_HARD_TIMEOUT_MS || '15000', 10); // 15s watchdog
       const child = spawn(ffmpegPath || 'ffmpeg', runArgs, { windowsHide: true });
       let stderr = '';
+      const timer = setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch { /* ignore */ }
+        reject(new Error(`FFmpeg watchdog timeout after ${hardLimitMs}ms. Partial stderr: ${stderr.slice(0,400)}`));
+      }, hardLimitMs);
       child.stderr.on('data', d => { stderr += d.toString(); });
-      child.on('error', err => reject(err));
+      child.on('error', err => { clearTimeout(timer); reject(err); });
       child.on('close', (code) => {
+        clearTimeout(timer);
+        if (process.env.DEBUG_SNAPSHOT && stderr) {
+          // eslint-disable-next-line no-console
+          console.debug('[SNAPSHOT] ffmpeg stderr snippet', stderr.substring(0, 800));
+        }
         if (code === 0) return resolve();
         reject(new Error(`FFmpeg failed (code=${code}) ${stderr.trim()}`));
       });
