@@ -81,7 +81,10 @@ export class RecordingService {
       const runWithFilter = (idx: number) => {
         const filter = filters[idx];
         const args = [
-          '-hide_banner', '-f', 'lavfi', '-i', filter,
+          '-hide_banner',
+          // -re để phát theo tốc độ thực tế thay vì render cực nhanh (giúp STOP có ý nghĩa)
+          ...(process.env.FAKE_RECORD_REALTIME === '0' ? [] : ['-re']),
+          '-f', 'lavfi', '-i', filter,
           '-t', String(durationSec),
           '-pix_fmt', 'yuv420p',
           ...(codec ? ['-c:v', codec] : []),
@@ -90,11 +93,14 @@ export class RecordingService {
         ];
         if (process.env.DEBUG_RECORDING) console.debug(`[RECORDING][FAKE] try filter[${idx}]`, filter);
         const child = spawn(ffmpegPath || 'ffmpeg', args, { windowsHide: true });
+        // Ghi nhận tiến trình để STOP hoạt động
+        this.active.set(rec.id, { proc: child, strategy: 'FAKE', started: Date.now() });
         let stderr = '';
         child.stderr?.on('data', d => { stderr += d.toString(); if (process.env.DEBUG_RECORDING) console.debug('[RECORDING][FAKE][stderr]', d.toString().trim()); });
         child.on('close', async (code) => {
           if (code === 0) {
             await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
+            this.active.delete(rec.id);
             return;
           }
           if (idx < filters.length - 1) {
@@ -104,13 +110,11 @@ export class RecordingService {
             const reason = this.classifyFfmpegError(stderr);
             const snippet = stderr.replace(/\s+/g, ' ').slice(0, 170);
             await this.recRepo.update(rec.id, { status: 'FAILED', endedAt: new Date(), errorMessage: `FAKE_${reason} ${snippet}` } as any);
+            this.active.delete(rec.id);
           }
         });
       };
-      const started = Date.now();
       runWithFilter(0);
-      // Không có handle stop vì FAKE kết thúc sau duration; vẫn ghi vào map để thống nhất
-      this.active.set(rec.id, { proc: null as any, strategy: 'FAKE', started });
       return { id: rec.id, storagePath: rec.storagePath, status: 'RUNNING' };
     }
 
