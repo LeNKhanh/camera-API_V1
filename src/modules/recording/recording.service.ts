@@ -226,6 +226,17 @@ export class RecordingService {
     return this.recRepo.find({ relations: ['camera'] });
   }
 
+  // Lọc nâng cao: cameraId + from/to (ISO) áp dụng startedAt/endedAt giao thoa
+  async listRecordingsFiltered(opts: { cameraId?: string; from?: string; to?: string }) {
+    const qb = this.recRepo.createQueryBuilder('r')
+      .leftJoinAndSelect('r.camera', 'c')
+      .orderBy('r.startedAt', 'DESC');
+    if (opts.cameraId) qb.andWhere('c.id = :cid', { cid: opts.cameraId });
+    if (opts.from) qb.andWhere('r.startedAt >= :from', { from: new Date(opts.from) });
+    if (opts.to) qb.andWhere('r.startedAt <= :to', { to: new Date(opts.to) });
+    return qb.getMany();
+  }
+
   // Chi tiết bản ghi
   async getRecording(id: string) {
     const rec = await this.recRepo.findOne({ where: { id }, relations: ['camera'] });

@@ -11,6 +11,7 @@ import { RecordingModule } from './recording/recording.module';
 import { EventModule } from './event/event.module';
 import { SnapshotModule } from './snapshot/snapshot.module';
 import { NetSdkModule } from './netsdk/netsdk.module';
+import { PtzModule } from './ptz/ptz.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RolesGuard } from '../common/roles.guard';
@@ -48,6 +49,7 @@ import { Snapshot } from '../typeorm/entities/snapshot.entity';
     EventModule,
     SnapshotModule,
     NetSdkModule,
+    PtzModule,
   ],
   controllers: [AppController],
   providers: [

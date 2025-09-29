@@ -3,7 +3,8 @@
 // - POST /recordings/start: bắt đầu ghi trong X giây từ cameraId
 // - GET /recordings?cameraId=: liệt kê theo camera hoặc tất cả
 // - GET /recordings/:id: xem chi tiết/trạng thái
-import { Body, Controller, Get, Param, Post, Query, UseGuards, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards, Put, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 
 import { Roles } from '../../common/roles.decorator';
@@ -46,8 +47,12 @@ export class RecordingController {
   // Danh sách bản ghi theo camera
   @Get()
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
-  list(@Query('cameraId') cameraId?: string) {
-    return this.svc.listRecordings(cameraId);
+  list(
+    @Query('cameraId') cameraId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.svc.listRecordingsFiltered({ cameraId, from, to });
   }
 
   // Trạng thái / chi tiết bản ghi
@@ -62,5 +67,16 @@ export class RecordingController {
   @Roles('ADMIN', 'OPERATOR')
   stop(@Param('id') id: string) {
     return this.svc.stopRecording(id);
+  }
+
+  // Tải file mp4 (stream) – chỉ ADMIN/OPERATOR (viewer có thể tùy biến nếu muốn)
+  @Get(':id/download')
+  @Roles('ADMIN','OPERATOR')
+  async download(@Param('id') id: string, @Res() res: Response) {
+    const rec = await this.svc.getRecording(id);
+    if (!rec.storagePath) return res.status(404).json({ error: 'NO_FILE' });
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename="${id}.mp4"`);
+    return res.sendFile(rec.storagePath);
   }
 }
