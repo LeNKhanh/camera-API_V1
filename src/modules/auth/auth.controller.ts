@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards, Req } from '@nestjs/common';
-import { IsIn, IsString, MinLength } from 'class-validator';
+import { IsIn, IsString, MinLength, IsNotEmpty, IsUUID } from 'class-validator';
 import { JwtAuthGuard } from '../guards/jwt.guard';
 import { RateLimitLoginGuard, RateLimitRefreshGuard } from '../../common/rate-limit.guard';
 
@@ -20,7 +20,14 @@ class RegisterDto {
 }
 
 class LoginDto { @IsString() username: string; @IsString() password: string; }
-class RefreshDto { @IsString() userId: string; @IsString() refreshToken: string; }
+class RefreshDto {
+  @IsUUID('4', { message: 'userId phải là UUID hợp lệ dạng v4' })
+  userId: string;
+
+  @IsString({ message: 'refreshToken phải là chuỗi' })
+  @IsNotEmpty({ message: 'refreshToken không được rỗng' })
+  refreshToken: string;
+}
 class LogoutDto { @IsString() userId: string; }
 
 @Controller('auth')
@@ -48,6 +55,11 @@ export class AuthController {
   @Post('refresh')
   @UseGuards(RateLimitRefreshGuard)
   async refresh(@Body() dto: RefreshDto): Promise<any> {
+    if (process.env.REFRESH_DEBUG === '1') {
+      // Debug hỗ trợ khi client báo lỗi 400 do body không parse đúng
+      // Chỉ log các field được whitelist
+      console.log('DEBUG_REFRESH_BODY', dto);
+    }
     return this.authService.refresh(dto.userId, dto.refreshToken);
   }
 
