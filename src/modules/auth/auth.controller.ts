@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards, Req } from '@nestjs/common';
-import { IsIn, IsString, MinLength, IsNotEmpty, IsUUID } from 'class-validator';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards, Req, Headers, UnauthorizedException } from '@nestjs/common';
+import { IsIn, IsString, MinLength, IsNotEmpty, IsUUID, IsOptional } from 'class-validator';
 import { JwtAuthGuard } from '../guards/jwt.guard';
 import { RateLimitLoginGuard, RateLimitRefreshGuard } from '../../common/rate-limit.guard';
 
@@ -21,14 +21,19 @@ class RegisterDto {
 
 class LoginDto { @IsString() username: string; @IsString() password: string; }
 class RefreshDto {
+  @IsOptional()
   @IsUUID('4', { message: 'userId phải là UUID hợp lệ dạng v4' })
-  userId: string;
+  userId?: string;
 
   @IsString({ message: 'refreshToken phải là chuỗi' })
   @IsNotEmpty({ message: 'refreshToken không được rỗng' })
   refreshToken: string;
 }
-class LogoutDto { @IsString() userId: string; }
+class LogoutDto {
+  @IsOptional()
+  @IsUUID('4', { message: 'userId phải là UUID hợp lệ dạng v4' })
+  userId?: string;
+}
 
 @Controller('auth')
 export class AuthController {
@@ -54,19 +59,38 @@ export class AuthController {
 
   @Post('refresh')
   @UseGuards(RateLimitRefreshGuard)
-  async refresh(@Body() dto: RefreshDto): Promise<any> {
+  async refresh(@Body() dto: RefreshDto, @Headers('authorization') auth?: string): Promise<any> {
     if (process.env.REFRESH_DEBUG === '1') {
-      // Debug hỗ trợ khi client báo lỗi 400 do body không parse đúng
-      // Chỉ log các field được whitelist
       console.log('DEBUG_REFRESH_BODY', dto);
     }
-    return this.authService.refresh(dto.userId, dto.refreshToken);
+    let userId = dto.userId;
+    if (!userId && auth?.startsWith('Bearer ')) {
+      // Fallback: giải mã JWT để lấy sub
+      try {
+        const token = auth.substring(7).trim();
+        const decoded: any = this.authService['jwtService'].decode(token);
+        if (decoded?.sub) userId = decoded.sub;
+      } catch (e) {
+        // bỏ qua decode lỗi
+      }
+    }
+    if (!userId) throw new UnauthorizedException('Missing userId (body userId hoặc Bearer JWT)');
+    return this.authService.refresh(userId, dto.refreshToken);
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@Body() dto: LogoutDto): Promise<any> {
-    return this.authService.logout(dto.userId);
+  async logout(@Body() dto: LogoutDto, @Headers('authorization') auth?: string): Promise<any> {
+    let userId = dto.userId;
+    if (!userId && auth?.startsWith('Bearer ')) {
+      try {
+        const token = auth.substring(7).trim();
+        const decoded: any = this.authService['jwtService'].decode(token);
+        if (decoded?.sub) userId = decoded.sub;
+      } catch {}
+    }
+    if (!userId) throw new UnauthorizedException('Missing userId (body userId hoặc Bearer JWT)');
+    return this.authService.logout(userId);
   }
 
 }
