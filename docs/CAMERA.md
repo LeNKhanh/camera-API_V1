@@ -1,7 +1,7 @@
 # CAMERA (Quản lý Camera)
 
 ## Mục tiêu
-CRUD thông tin camera: IP, credential, port RTSP, vendor, trạng thái.
+CRUD thông tin camera Dahua: IP, SDK port (37777), credential, RTSP port, trạng thái. (Vendor cố định 'dahua').
 
 ## Endpoint
 | Method | Path | Mô tả |
@@ -13,19 +13,19 @@ CRUD thông tin camera: IP, credential, port RTSP, vendor, trạng thái.
 | DELETE | /cameras/:id | Xoá |
 | GET | /cameras/:id/verify | Kiểm tra nhanh kết nối RTSP (ffmpeg ping) |
 
-## Thuộc tính chính (body POST)
+## Thuộc tính chính (body POST – Dahua Only)
 ```json
 {
   "name": "Kho 1",
   "ipAddress": "192.168.1.10",
-  "username": "user",
-  "password": "pass",
+  "port": 37777,
+  "username": "admin",
+  "password": "Abc12345",
   "rtspPort": 554,
-  "vendor": "hikvision",
   "enabled": true
 }
 ```
-Tùy chọn: sdk_port, codec, resolution, onvifUrl.
+Tùy chọn: codec, resolution, rtspUrl (override). Vendor auto = "dahua".
 
 ## Test nhanh (PowerShell)
 ```powershell
@@ -43,11 +43,7 @@ curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?en
 # Tìm theo tên chứa 'Kho'
 curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?name=Kho"
 
-# Lọc vendor đơn (ví dụ dahua)
-curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?vendor=dahua"
-
-# Lọc nhiều vendor (dahua + hikvision)
-curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?vendors=dahua,hikvision"
+# (ĐÃ BỎ) vendor / vendors filter vì project chuyên Dahua
 
 # Date range (ISO hoặc yyyy-mm-dd)
 curl -Headers @{Authorization="Bearer $token"} "http://localhost:3000/cameras?createdFrom=2025-09-01&createdTo=2025-09-29"
@@ -67,19 +63,17 @@ curl -Method DELETE -Uri http://localhost:3000/cameras/<id> -Headers @{Authoriza
 |-------|------|-------|-------|
 | enabled | boolean | enabled=true | Lọc theo trạng thái bật/tắt |
 | name | string | name=Kho | Tên chứa chuỗi (LIKE, không phân biệt hoa thường) |
-| vendor | string | vendor=dahua | Lọc 1 vendor (bị override nếu có vendors) |
-| vendors | string | vendors=dahua,hikvision | Danh sách vendor phân cách dấu phẩy |
 | createdFrom | date/ISO | createdFrom=2025-09-01 | Lọc tạo từ ngày (>=) |
 | createdTo | date/ISO | createdTo=2025-09-29 | Lọc tạo đến ngày (<=) |
 | page | number | page=2 | Trang (>=1) – kích hoạt pagination nếu kèm pageSize |
 | pageSize | number | pageSize=10 | Số phần tử mỗi trang (tối đa 100) |
-| sortBy | enum | sortBy=name | createdAt | name | vendor (mặc định createdAt) |
+| sortBy | enum | sortBy=name | createdAt | name (mặc định createdAt) |
 | sortDir | enum | sortDir=ASC | ASC | DESC (mặc định DESC) |
 
 Quy tắc:
 - Nếu không truyền cả page và pageSize → trả về MẢNG đơn thuần (giữ tương thích cũ).
 - Nếu truyền page & pageSize hợp lệ → trả về OBJECT có `data` + `pagination`.
-- `vendors` ưu tiên hơn `vendor` nếu cùng xuất hiện.
+- Bỏ tham số vendor / vendors (cố định Dahua).
 
 ### Ví dụ request kết hợp
 ```
@@ -90,7 +84,7 @@ Quy tắc:
 ```json
 {
   "data": [
-    { "id": "...", "name": "Kho 1", "vendor": "dahua", "enabled": true, "createdAt": "2025-09-29T09:00:00.000Z" }
+  { "id": "...", "name": "Kho 1", "enabled": true, "createdAt": "2025-09-29T09:00:00.000Z" }
   ],
   "pagination": { "page": 1, "pageSize": 5, "total": 12, "totalPages": 3 },
   "sort": { "sortBy": "name", "sortDir": "ASC" },
@@ -101,8 +95,8 @@ Quy tắc:
 ### Ví dụ response (không pagination)
 ```json
 [
-  { "id": "...", "name": "Kho 1", "vendor": "dahua", "enabled": true },
-  { "id": "...", "name": "Kho 2", "vendor": "hikvision", "enabled": true }
+  { "id": "...", "name": "Kho 1", "enabled": true },
+  { "id": "...", "name": "Kho 2", "enabled": true }
 ]
 ```
 

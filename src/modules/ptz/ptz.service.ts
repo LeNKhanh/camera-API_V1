@@ -181,4 +181,18 @@ export class PtzService {
     if (!act) return { moving: false };
     return { moving: true, action: act.action, ms: Date.now() - act.startedAt };
   }
+
+  async logs(cameraId: string) {
+    // Lấy tối đa maxLogsPerCamera bản ghi gần nhất cho camera
+    this.initConfigOnce();
+    return this.logRepo.createQueryBuilder('l')
+      .select([
+        'l.id','l.action','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'
+      ])
+      .innerJoin('l.camera','c')
+      .where('c.id = :cid', { cid: cameraId })
+      .orderBy('l.createdAt','DESC')
+      .limit(this.maxLogsPerCamera)
+      .getMany();
+  }
 }

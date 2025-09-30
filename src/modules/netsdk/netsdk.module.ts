@@ -1,9 +1,2 @@
-import { Module } from '@nestjs/common';
-import { NetSdkService, NetSdkController } from '.';
-
-@Module({
-  providers: [NetSdkService],
-  controllers: [NetSdkController],
-  exports: [NetSdkService],
-})
+// Deprecated: NetSdkModule đã bị loại bỏ. Giữ file rỗng để tránh lỗi import cũ.
 export class NetSdkModule {}

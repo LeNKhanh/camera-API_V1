@@ -140,27 +140,13 @@ export class SnapshotService {
       const basePortList = [String(cam.rtspPort), ...altPorts];
       // Generate baseAuth variants for each port
       const baseAuthPorts = basePortList.map(port => `${encodeURIComponent(cam.username!)}:${encodeURIComponent(cam.password!)}@${cam.ipAddress}:${port}`);
-      const vendor = (cam.vendor || '').toLowerCase();
       for (const auth of baseAuthPorts) {
-        if (vendor.includes('hik')) {
-          rtspCandidates.push(
-            `rtsp://${auth}/Streaming/Channels/101`,
-            `rtsp://${auth}/Streaming/Channels/102`,
-          );
-        } else if (vendor.includes('dahua')) {
-          rtspCandidates.push(
-            `rtsp://${auth}/cam/realmonitor?channel=1&subtype=0`,
-            `rtsp://${auth}/cam/realmonitor?channel=1&subtype=1`,
-            `rtsp://${auth}/cam/realmonitor?channel=1&subtype=2`,
-          );
-        } else if (vendor.includes('onvif')) {
-          rtspCandidates.push(`rtsp://${auth}/onvif-media/media.amp`);
-        }
-        // Generic fallback cho mỗi port
         rtspCandidates.push(
-          `rtsp://${auth}/live`,
-          `rtsp://${auth}/`,
+          `rtsp://${auth}/cam/realmonitor?channel=1&subtype=0`,
+          `rtsp://${auth}/cam/realmonitor?channel=1&subtype=1`,
+          `rtsp://${auth}/cam/realmonitor?channel=1&subtype=2`,
         );
+        rtspCandidates.push(`rtsp://${auth}/live`, `rtsp://${auth}/`);
       }
       if (process.env.DEBUG_SNAPSHOT) {
         // eslint-disable-next-line no-console

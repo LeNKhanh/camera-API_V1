@@ -28,42 +28,24 @@ import { CameraService } from './camera.service';
 class CreateCameraDto {
   @IsString()
   name: string;
-
   @IsString()
   ipAddress: string;
-
-  @IsOptional()
+  @IsInt() @Min(1)
+  port: number; // Dahua SDK port
   @IsString()
-  rtspUrl?: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
+  username: string;
+  @IsString()
+  password: string;
+  @IsOptional() @IsInt() @Min(1)
   rtspPort?: number = 554;
-
-  @IsOptional()
-  @IsString()
-  onvifUrl?: string;
-
-  @IsOptional()
-  @IsString()
-  username?: string;
-
-  @IsOptional()
-  @IsString()
-  password?: string;
-
-  @IsOptional()
-  @IsString()
-  codec?: string = 'H.264';
-
-  @IsOptional()
-  @IsString()
-  resolution?: string = '1080p';
-
-  @IsOptional()
-  @IsBoolean()
+  @IsOptional() @IsBoolean()
   enabled?: boolean = true;
+  @IsOptional() @IsString()
+  rtspUrl?: string;
+  @IsOptional() @IsString()
+  codec?: string = 'H.264';
+  @IsOptional() @IsString()
+  resolution?: string = '1080p';
 }
 
 class UpdateCameraDto extends CreateCameraDto {}
@@ -80,14 +62,12 @@ export class CameraController {
     return this.cameraService.create(dto);
   }
 
-  // Danh sách camera (filter optional: enabled=true|false, name chứa, vendor)
+  // Danh sách camera (filter optional: enabled=true|false, name chứa) – Dahua only
   @Get()
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
   findAll(
     @Query('enabled') enabled?: string,
     @Query('name') name?: string,
-    @Query('vendor') vendor?: string,
-    @Query('vendors') vendorsMulti?: string, // alias cho nhiều vendor cách nhau dấu phẩy
     @Query('createdFrom') createdFrom?: string,
     @Query('createdTo') createdTo?: string,
     @Query('page') page?: string,
@@ -98,9 +78,6 @@ export class CameraController {
     let enabledBool: boolean | undefined;
     if (enabled === 'true') enabledBool = true;
     else if (enabled === 'false') enabledBool = false;
-
-    // Ưu tiên vendorsMulti nếu có, fallback vendor đơn
-    const vendorParam = vendorsMulti && vendorsMulti.trim().length > 0 ? vendorsMulti : vendor;
 
     // Parse date range (ISO hoặc yyyy-mm-dd)
     let createdFromDate: Date | undefined;
@@ -117,13 +94,13 @@ export class CameraController {
     const pageNum = page ? parseInt(page, 10) : undefined;
     const pageSizeNum = pageSize ? parseInt(pageSize, 10) : undefined;
 
-    const sortByKey = (['createdAt','name','vendor'].includes(sortBy || '') ? sortBy : undefined) as any;
+  const sortByKey = (['createdAt','name'].includes(sortBy || '') ? sortBy : undefined) as any;
     const sortDirKey = (sortDir === 'ASC' || sortDir === 'DESC') ? sortDir : undefined;
 
     return this.cameraService.findAll({
       enabled: enabledBool,
       name,
-      vendor: vendorParam,
+  // vendor fixed 'dahua'
       createdFrom: createdFromDate,
       createdTo: createdToDate,
       page: pageNum,

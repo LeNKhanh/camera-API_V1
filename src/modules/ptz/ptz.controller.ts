@@ -35,4 +35,11 @@ export class PtzController {
   status(@Param('id') id: string) {
     return this.svc.status(id);
   }
+
+  // Lấy lịch sử log PTZ gần nhất (giới hạn đã cấu hình trong service – PTZ_LOG_MAX)
+  @Get('logs')
+  @Roles('ADMIN','OPERATOR','VIEWER')
+  logs(@Param('id') id: string) {
+    return this.svc.logs(id);
+  }
 }

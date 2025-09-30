@@ -1,9 +1,9 @@
 # Camera API (NestJS + PostgreSQL + FFmpeg)
 
-Backend REST quản lý camera / snapshot / recording / event với JWT + RBAC. Sử dụng PostgreSQL + TypeORM và FFmpeg (ffmpeg-static) cho chức năng chụp ảnh & ghi nhanh. 
+Backend REST quản lý camera Dahua / snapshot / recording / event với JWT + RBAC. Sử dụng PostgreSQL + TypeORM và FFmpeg (ffmpeg-static) cho chức năng chụp ảnh & ghi nhanh. (ĐÃ CHUYỂN SANG CHUYÊN BIỆT DAHUA – loại bỏ multi-vendor filters.)
 
 ## Thành phần chính
-- NestJS Modules: Auth, Camera, Snapshot, Recording, Event, Stream (stub), NetSDK (mock PTZ).
+- NestJS Modules: Auth, Camera (Dahua-only), Snapshot, Recording, Event, Stream (stub), PTZ Friendly.
 - PostgreSQL + TypeORM (migrations, UUID PK).
 - FFmpeg (ffmpeg-static) cho snapshot & recording cơ bản.
 - JWT + RolesGuard (ADMIN / OPERATOR / VIEWER).
@@ -83,16 +83,10 @@ Auth:
  - POST /auth/refresh (body: userId, refreshToken) – cấp mới access + refresh (rotate)
  - POST /auth/logout (body: userId) – xoá refresh token (revoke)
 
-Camera:
-- CRUD: /cameras
-- Verify kết nối RTSP: GET /cameras/:id/verify (ffmpeg thử bắt 1 frame, phân loại OK / AUTH / TIMEOUT / CONN / NOT_FOUND)
- - Bộ lọc nâng cao (query params tùy chọn):
-	 - enabled=true|false
-	 - name=<chuỗi> (LIKE, không phân biệt hoa thường)
-	 - vendor=<vendor> hoặc vendors=vendor1,vendor2
-	 - createdFrom=YYYY-MM-DD (& createdTo=YYYY-MM-DD)
-	 - page & pageSize (pagination, trả kèm paging metadata khi dùng)
-	 - sortBy=createdAt|name|vendor & sortDir=ASC|DESC
+ Camera (Dahua-only):
+ - CRUD: /cameras
+ - Verify kết nối RTSP: GET /cameras/:id/verify (ffmpeg thử bắt 1 frame: OK / AUTH / TIMEOUT / CONN / NOT_FOUND)
+ - Bộ lọc: enabled, name, createdFrom/createdTo, pagination (page,pageSize), sortBy=createdAt|name, sortDir
 
 Snapshot:
 - POST /snapshots/capture (strategy mặc định RTSP, có FAKE để dev offline)
@@ -120,11 +114,7 @@ PTZ Friendly:
 	- Throttle (mặc định 200ms, ENV: PTZ_THROTTLE_MS; debug: PTZ_THROTTLE_DEBUG=1 trả lastDeltaMs)
 	- Ghi log lịch sử vào bảng ptz_logs (giữ tối đa 5 log gần nhất mỗi camera – ENV: PTZ_LOG_MAX)
 
-NetSDK (legacy mock PTZ):
-- POST /netsdk/sessions, GET /netsdk/sessions, GET /netsdk/sessions/:handle
-- PUT /netsdk/sessions/:handle/ptz
-- DELETE /netsdk/sessions/:handle
-- POST /netsdk/sessions/:handle/snapshots (hiện báo không hỗ trợ)
+Legacy NetSDK module: (ĐÃ GỠ BỎ) trước đây mô phỏng PTZ kiểu session/handle.
 
 ### Tài liệu chi tiết theo chức năng
 - Auth: `docs/AUTH.md`
@@ -177,10 +167,7 @@ src/
 			stream.controller.ts# Trả URL stub (HLS/DASH)
 			stream.service.ts
 			stream.module.ts
-		netsdk/               # Mock SDK PTZ cũ (giữ để so sánh)
-			netsdk.controller.ts
-			netsdk.service.ts
-			netsdk.module.ts
+        # (netsdk/ đã xoá – dùng PTZ friendly duy nhất)
 		ptz/                  # PTZ Friendly API (abstract hoá tốc độ / vector)
 			ptz.controller.ts
 			ptz.service.ts      # Speed→vector, throttle, log, prune
@@ -210,7 +197,7 @@ docs/
 - Module hoá rõ ràng: dễ bật/tắt hoặc tách microservice sau này.
 - Service không import ngược lẫn nhau để tránh vòng lặp (chỉ ngoại lệ nếu dùng injection tokens).
 - Entity giữ logic tối thiểu (anemic model) → Business nằm ở service.
-- PTZ friendly tách riêng với mock NetSDK để sau này có thể thêm adapter ONVIF / SDK thực.
+- PTZ friendly thay thế hẳn module NetSDK legacy (đã xoá) → sau này có thể thêm adapter ONVIF.
 - Tất cả thao tác nặng (ffmpeg, retry snapshot) được bao trong service chuyên dụng để tránh controller phình to.
 - Pagination chỉ bật khi có query `page` hoặc `pageSize` để giữ backward compatibility.
 - ENV kiểm soát hành vi (throttle, timeout, fake mode) giúp dev dễ test offline.
@@ -219,7 +206,7 @@ docs/
 - Thêm `SwaggerModule` tự sinh OpenAPI docs.
 - Thêm `@nestjs/config` + schema validation cho ENV.
 - Viết migration chính thức: ptz_logs, bổ sung cột ack, strategy (nếu chưa).
-- Adapter PTZ ONVIF thật (thay thế logic giả). 
+- Adapter PTZ Dahua/ONVIF thật (thay thế logic giả). 
 - Module lưu trữ S3/MinIO cho snapshot/recording.
 - WebSocket / SSE push realtime events & PTZ feedback.
 - Cơ chế audit log / soft delete.

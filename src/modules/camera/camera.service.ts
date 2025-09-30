@@ -12,9 +12,22 @@ export class CameraService {
   constructor(@InjectRepository(Camera) private readonly repo: Repository<Camera>) {}
 
   // Tạo mới camera
-  async create(dto: Partial<Camera>) {
+  async create(dto: any) {
     this.validateIp(dto.ipAddress);
-    const entity = this.repo.create(dto);
+    const cam: Partial<Camera> = {
+      name: dto.name,
+      ipAddress: dto.ipAddress,
+      sdkPort: dto.port,
+      username: dto.username,
+      password: dto.password,
+      rtspPort: dto.rtspPort ?? 554,
+      vendor: 'dahua',
+      codec: dto.codec || 'H.264',
+      resolution: dto.resolution || '1080p',
+      enabled: typeof dto.enabled === 'boolean' ? dto.enabled : true,
+    };
+    cam.rtspUrl = dto.rtspUrl || `rtsp://${encodeURIComponent(cam.username!)}:${encodeURIComponent(cam.password!)}@${cam.ipAddress}:${cam.rtspPort}/cam/realmonitor?channel=1&subtype=0`;
+    const entity = this.repo.create(cam);
     return this.repo.save(entity);
   }
 
@@ -22,7 +35,7 @@ export class CameraService {
   async findAll(filter?: {
     enabled?: boolean;
     name?: string;
-    vendor?: string; // đơn hoặc danh sách phân cách dấu phẩy
+  vendor?: string; // deprecated – ignored
     createdFrom?: Date;
     createdTo?: Date;
     page?: number;
@@ -32,7 +45,7 @@ export class CameraService {
   }) {
     const qb = this.repo.createQueryBuilder('c')
       .select([
-        'c.id', 'c.name', 'c.ipAddress', 'c.rtspPort', 'c.enabled', 'c.codec', 'c.resolution', 'c.vendor', 'c.createdAt', 'c.updatedAt'
+        'c.id', 'c.name', 'c.ipAddress', 'c.sdkPort', 'c.rtspPort', 'c.enabled', 'c.codec', 'c.resolution', 'c.createdAt', 'c.updatedAt'
       ]);
 
     if (filter) {
@@ -42,15 +55,7 @@ export class CameraService {
       if (filter.name && filter.name.trim().length > 0) {
         qb.andWhere('LOWER(c.name) LIKE :name', { name: `%${filter.name.toLowerCase()}%` });
       }
-      if (filter.vendor && filter.vendor.trim().length > 0) {
-        // Hỗ trợ danh sách vendor: vendor=dahua,hikvision
-        const vendors = filter.vendor.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
-        if (vendors.length === 1) {
-          qb.andWhere('LOWER(c.vendor) = :vendor', { vendor: vendors[0] });
-        } else if (vendors.length > 1) {
-          qb.andWhere('LOWER(c.vendor) IN (:...vendors)', { vendors });
-        }
-      }
+      // vendor filter removed (fixed to dahua)
       if (filter.createdFrom) {
         qb.andWhere('c.createdAt >= :from', { from: filter.createdFrom });
       }
@@ -62,7 +67,7 @@ export class CameraService {
     // Sort
     const sortBy = filter?.sortBy || 'createdAt';
     const sortDir = filter?.sortDir || 'DESC';
-    const allowedSort: Record<string, string> = { createdAt: 'c.createdAt', name: 'c.name', vendor: 'c.vendor' };
+  const allowedSort: Record<string, string> = { createdAt: 'c.createdAt', name: 'c.name' };
     qb.orderBy(allowedSort[sortBy] || 'c.createdAt', sortDir === 'ASC' ? 'ASC' : 'DESC');
 
     // Pagination (chỉ áp dụng nếu page/pageSize hợp lệ)
@@ -83,7 +88,7 @@ export class CameraService {
         filtersApplied: {
           enabled: filter?.enabled,
           name: filter?.name,
-          vendor: filter?.vendor,
+          // vendor removed
           createdFrom: filter?.createdFrom,
           createdTo: filter?.createdTo,
         }
