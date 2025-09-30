@@ -25,9 +25,10 @@ class RefreshDto {
   @IsUUID('4', { message: 'userId phải là UUID hợp lệ dạng v4' })
   userId?: string;
 
+  // Đặt optional để vào được controller rồi tự chuẩn hoá fallback (refresh_token, token ...)
+  @IsOptional()
   @IsString({ message: 'refreshToken phải là chuỗi' })
-  @IsNotEmpty({ message: 'refreshToken không được rỗng' })
-  refreshToken: string;
+  refreshToken?: string;
 }
 class LogoutDto {
   @IsOptional()
@@ -59,23 +60,34 @@ export class AuthController {
 
   @Post('refresh')
   @UseGuards(RateLimitRefreshGuard)
-  async refresh(@Body() dto: RefreshDto, @Headers('authorization') auth?: string): Promise<any> {
+  async refresh(@Body() dto: RefreshDto, @Headers('authorization') auth?: string, @Req() req?: any): Promise<any> {
+    // Chuẩn hoá refreshToken: chấp nhận các alias refresh_token, token nếu client gửi sai key.
+    const rawBody = (req && req.body) || {};
+    let refreshToken = dto.refreshToken ?? rawBody.refresh_token ?? rawBody.token;
+    if (typeof refreshToken === 'string') refreshToken = refreshToken.trim();
+
     if (process.env.REFRESH_DEBUG === '1') {
-      console.log('DEBUG_REFRESH_BODY', dto);
+      console.log('DEBUG_REFRESH_BODY_RAW', rawBody);
+      console.log('DEBUG_REFRESH_NORMALIZED', { userId: dto.userId, refreshToken });
     }
+
     let userId = dto.userId;
     if (!userId && auth?.startsWith('Bearer ')) {
-      // Fallback: giải mã JWT để lấy sub
       try {
         const token = auth.substring(7).trim();
         const decoded: any = this.authService['jwtService'].decode(token);
         if (decoded?.sub) userId = decoded.sub;
-      } catch (e) {
-        // bỏ qua decode lỗi
-      }
+      } catch {}
     }
     if (!userId) throw new UnauthorizedException('Missing userId (body userId hoặc Bearer JWT)');
-    return this.authService.refresh(userId, dto.refreshToken);
+    if (!refreshToken) {
+      throw new UnauthorizedException('Missing refreshToken (refreshToken / refresh_token / token)');
+    }
+    if (refreshToken.length < 20) {
+      // Rất ngắn -> khả năng sai
+      throw new UnauthorizedException('refreshToken quá ngắn hoặc không hợp lệ');
+    }
+    return this.authService.refresh(userId, refreshToken);
   }
 
   @Post('logout')
