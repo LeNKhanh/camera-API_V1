@@ -86,7 +86,7 @@ Auth:
  Camera (Dahua-only + Multi-Channel):
  - CRUD: /cameras (mỗi record = một channel trên thiết bị IP)
  - Bulk create nhiều channel: POST /cameras/bulk-channels { ipAddress, port, username, password, channels }
- - Auto-increment channel nếu IP đã tồn tại (tự chọn channel trống nhỏ nhất: 1,2,3...)
+ - Auto-increment channel nếu IP đã tồn tại (quy tắc MỚI: luôn gán channel = MAX(channel hiện có cùng IP) + 1, không lấp khoảng trống)
  - Verify RTSP: GET /cameras/:id/verify (OK / AUTH / TIMEOUT / CONN / NOT_FOUND)
  - Bộ lọc: enabled, name, channel, createdFrom/createdTo, pagination (page,pageSize), sortBy=createdAt|name, sortDir
 
