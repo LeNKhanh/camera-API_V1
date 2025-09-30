@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards, Req, Headers, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards, Req, Headers, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { IsIn, IsString, MinLength, IsNotEmpty, IsUUID, IsOptional } from 'class-validator';
 import { JwtAuthGuard } from '../guards/jwt.guard';
 import { RateLimitLoginGuard, RateLimitRefreshGuard } from '../../common/rate-limit.guard';
@@ -60,16 +60,23 @@ export class AuthController {
 
   @Post('refresh')
   @UseGuards(RateLimitRefreshGuard)
-  async refresh(@Body() dto: RefreshDto, @Headers('authorization') auth?: string, @Req() req?: any): Promise<any> {
-    // Chuẩn hoá refreshToken: chấp nhận các alias refresh_token, token nếu client gửi sai key.
+  async refresh(
+    @Body() dto: RefreshDto,
+    @Headers('authorization') auth?: string,
+    @Headers('x-refresh-token') xRefreshToken?: string,
+    @Req() req?: any,
+  ): Promise<any> {
     const rawBody = (req && req.body) || {};
-    let refreshToken = dto.refreshToken ?? rawBody.refresh_token ?? rawBody.token;
-    if (typeof refreshToken === 'string') refreshToken = refreshToken.trim();
 
-    if (process.env.REFRESH_DEBUG === '1') {
-      console.log('DEBUG_REFRESH_BODY_RAW', rawBody);
-      console.log('DEBUG_REFRESH_NORMALIZED', { userId: dto.userId, refreshToken });
-    }
+    // Thu thập các nguồn có thể chứa refresh token
+    let refreshToken = dto.refreshToken
+      ?? rawBody.refreshToken
+      ?? rawBody.refresh_token
+      ?? rawBody.token
+      ?? xRefreshToken
+      ?? (req?.cookies ? req.cookies['refreshToken'] : undefined);
+
+    if (typeof refreshToken === 'string') refreshToken = refreshToken.trim();
 
     let userId = dto.userId;
     if (!userId && auth?.startsWith('Bearer ')) {
@@ -77,16 +84,24 @@ export class AuthController {
         const token = auth.substring(7).trim();
         const decoded: any = this.authService['jwtService'].decode(token);
         if (decoded?.sub) userId = decoded.sub;
-      } catch {}
+      } catch (e) {
+        if (process.env.REFRESH_DEBUG === '1') console.log('DECODE_JWT_FAILED', (e as any)?.message);
+      }
     }
+
+    if (process.env.REFRESH_DEBUG === '1') {
+      console.log('DEBUG_REFRESH_SOURCES', {
+        bodyKeys: Object.keys(rawBody || {}),
+        dto,
+        xRefreshToken: !!xRefreshToken,
+        cookieKeys: req?.cookies ? Object.keys(req.cookies) : [],
+        normalized: { userId, hasRefresh: !!refreshToken, len: refreshToken?.length },
+      });
+    }
+
     if (!userId) throw new UnauthorizedException('Missing userId (body userId hoặc Bearer JWT)');
-    if (!refreshToken) {
-      throw new UnauthorizedException('Missing refreshToken (refreshToken / refresh_token / token)');
-    }
-    if (refreshToken.length < 20) {
-      // Rất ngắn -> khả năng sai
-      throw new UnauthorizedException('refreshToken quá ngắn hoặc không hợp lệ');
-    }
+    if (!refreshToken) throw new BadRequestException('Missing refreshToken (body/alias/header/cookie)');
+    if (refreshToken.length < 20) throw new BadRequestException('refreshToken quá ngắn hoặc không hợp lệ');
     return this.authService.refresh(userId, refreshToken);
   }
 
