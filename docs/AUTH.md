@@ -10,7 +10,7 @@ Quản lý người dùng, đăng ký (dev), đăng nhập JWT, phân quyền va
 | POST | /auth/login | Đăng nhập lấy accessToken + refreshToken |
 | POST | /auth/refresh | Lấy cặp access + refresh mới (rotate) |
 | POST | /auth/logout | Thu hồi refresh token (revoke) |
-| GET  | /auth/me | Thông tin user hiện tại (Bearer) |
+| GET  | /users/profile | Thông tin user hiện tại (Bearer) |
 
 ## Vai trò
 | Role | Quyền chính |
@@ -45,8 +45,8 @@ $login = curl -Method POST -Uri http://localhost:3000/auth/login -Body '{"userna
 $loginBody = $login.Content | ConvertFrom-Json
 $access = $loginBody.accessToken
 $refresh = $loginBody.refreshToken
-# Nếu login response chưa có userId (tuỳ code), dùng /auth/me để lấy hoặc decode JWT
-$me = curl -Headers @{Authorization="Bearer $access"} http://localhost:3000/auth/me
+# Nếu login response chưa có userId (tuỳ code), dùng /users/profile để lấy hoặc decode JWT
+$me = curl -Headers @{Authorization="Bearer $access"} http://localhost:3000/users/profile
 $userId = ($me.Content | ConvertFrom-Json).id
 
 # Gọi API bảo vệ

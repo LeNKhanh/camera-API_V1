@@ -57,9 +57,4 @@ export class AuthController {
     return this.authService.logout(dto.userId);
   }
 
-  @Get('me')
-  @UseGuards(JwtAuthGuard)
-  async me(@Req() req: any): Promise<any> {
-    return this.authService.getProfile(req.user.userId);
-  }
 }
