@@ -44,6 +44,98 @@ QUY TẮC GÁN CHANNEL (mới): Nếu không gửi `channel` hoặc gửi giá t
 ```
 Tạo tối đa N record channel (1..N). Channel đã tồn tại sẽ bị bỏ qua (bỏ duplicate). Trả về mảng camera được tạo mới.
 
+### Hướng dẫn test tạo camera đơn & bulk-channels
+
+#### Chuẩn bị token
+```powershell
+$login = curl -Method POST -Uri http://localhost:3000/auth/login -Body '{"username":"admin","password":"admin123"}' -ContentType 'application/json'
+$access = ($login.Content | ConvertFrom-Json).accessToken
+```
+
+#### 1. Tạo camera đơn (auto channel)
+Body KHÔNG gửi `channel`:
+```powershell
+curl -Method POST -Uri http://localhost:3000/cameras -Headers @{Authorization="Bearer $access"} -Body '{"name":"Kho Cam","ipAddress":"192.168.1.50","username":"admin","password":"Abc12345","rtspPort":554}' -ContentType 'application/json'
+```
+Kết quả kỳ vọng (ví dụ):
+```json
+{ "id": "...", "ipAddress": "192.168.1.50", "channel": 1, "name": "Kho Cam", "enabled": true }
+```
+
+#### 2. Tạo thêm camera cùng IP (auto tăng MAX+1)
+```powershell
+curl -Method POST -Uri http://localhost:3000/cameras -Headers @{Authorization="Bearer $access"} -Body '{"name":"Kho Cam 2","ipAddress":"192.168.1.50","username":"admin","password":"Abc12345","rtspPort":554}' -ContentType 'application/json'
+```
+Kết quả: channel = 2 (vì MAX trước đó là 1). Lặp lại lần 3 → channel = 3.
+
+#### 3. Truy vấn lọc theo channel
+```powershell
+curl -Headers @{Authorization="Bearer $access"} "http://localhost:3000/cameras?ipAddress=192.168.1.50&channel=2"
+```
+Kết quả: mảng 1 phần tử channel 2.
+
+#### 4. Bulk create đầy đủ
+Tạo 5 channel (1..5) cho IP mới 192.168.1.60:
+```powershell
+curl -Method POST -Uri http://localhost:3000/cameras/bulk-channels -Headers @{Authorization="Bearer $access"} -Body '{"name":"NVR Test","ipAddress":"192.168.1.60","username":"admin","password":"Abc12345","port":37777,"channels":5}' -ContentType 'application/json'
+```
+Kết quả: trả về mảng 5 phần tử (channel 1..5). Kiểm tra:
+```powershell
+curl -Headers @{Authorization="Bearer $access"} http://localhost:3000/cameras?ipAddress=192.168.1.60
+```
+
+#### 5. Bulk create khi đã có một phần
+Giả sử đã có channel 1..3 cho IP 192.168.1.70:
+```powershell
+# Tạo trước 3 channel
+1..3 | ForEach-Object { curl -Method POST -Uri http://localhost:3000/cameras -Headers @{Authorization="Bearer $access"} -Body ("{`"name`":`"Cam {0}`",`"ipAddress`":`"192.168.1.70`",`"username`":`"admin`",`"password`":`"Abc12345`",`"rtspPort`":554}" -f $_) -ContentType 'application/json' | Out-Null }
+
+# Bulk thêm 5 channel (yêu cầu 1..5) → hệ thống chỉ tạo 4 và 5
+curl -Method POST -Uri http://localhost:3000/cameras/bulk-channels -Headers @{Authorization="Bearer $access"} -Body '{"name":"NVR 70","ipAddress":"192.168.1.70","username":"admin","password":"Abc12345","channels":5}' -ContentType 'application/json'
+```
+Kết quả: mảng chỉ gồm channel 4 & 5.
+
+#### 6. Thử gửi channel đã bị chiếm trong POST đơn
+```powershell
+curl -Method POST -Uri http://localhost:3000/cameras -Headers @{Authorization="Bearer $access"} -Body '{"name":"Force Channel 2","ipAddress":"192.168.1.50","channel":2,"username":"admin","password":"Abc12345","rtspPort":554}' -ContentType 'application/json'
+```
+Do 2 đã tồn tại, server sẽ gán channel = MAX + 1 (ví dụ 4 nếu trước đó có 1..3).
+
+#### 7. Xoá một channel rồi tạo lại
+```powershell
+# Giả sử xoá channel 2 của IP 192.168.1.50 (id giả định <id2>)
+curl -Method DELETE -Uri http://localhost:3000/cameras/<id2> -Headers @{Authorization="Bearer $access"}
+
+# Tạo mới nữa
+curl -Method POST -Uri http://localhost:3000/cameras -Headers @{Authorization="Bearer $access"} -Body '{"name":"After Delete","ipAddress":"192.168.1.50","username":"admin","password":"Abc12345","rtspPort":554}' -ContentType 'application/json'
+```
+Kết quả: channel tiếp tục MAX+1 (không lấp lại 2). Ví dụ trước đó còn 1,3,4 → MAX=4 → new=5.
+
+#### 8. Lỗi IP không hợp lệ
+```powershell
+curl -Method POST -Uri http://localhost:3000/cameras -Headers @{Authorization="Bearer $access"} -Body '{"name":"Bad IP","ipAddress":"999.10.10.10","username":"u","password":"p","rtspPort":554}' -ContentType 'application/json'
+```
+Kết quả: 400 với message invalid IP.
+
+#### 9. Race condition (hiếm)
+Nếu hai request đồng thời cùng IP mới: một trong hai có thể 409 (unique (ipAddress,channel)). Client nên retry đơn giản.
+
+#### 10. Kiểm tra pagination sau khi tạo nhiều bản ghi
+```powershell
+curl -Headers @{Authorization="Bearer $access"} "http://localhost:3000/cameras?page=1&pageSize=5&sortBy=createdAt&sortDir=DESC"
+```
+
+#### Ghi chú kiểm chứng nhanh
+| Tình huống | Kỳ vọng |
+|------------|---------|
+| POST không channel | channel = 1 nếu IP mới |
+| POST cùng IP lặp lại | channel tăng dần MAX+1 |
+| bulk n=5 IP mới | tạo đủ 1..5 |
+| bulk n=5 nhưng đã có 1..3 | chỉ tạo 4,5 |
+| Gửi channel trùng | server bỏ và dùng MAX+1 |
+| Xoá channel giữa (vd 2) rồi tạo | ra channel tiếp theo (không reuse 2) |
+| IP sai định dạng | 400 |
+
 ## Test nhanh (PowerShell)
 ```powershell
 $token = (curl -Method POST -Uri http://localhost:3000/auth/login -Body '{"username":"admin","password":"admin123"}' -ContentType 'application/json').Content | ConvertFrom-Json | Select-Object -ExpandProperty accessToken
