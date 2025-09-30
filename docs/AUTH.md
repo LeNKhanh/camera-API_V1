@@ -11,11 +11,14 @@ Quản lý người dùng, đăng ký (dev), đăng nhập JWT, phân quyền va
 | POST | /auth/refresh | Lấy cặp access + refresh mới (rotate) (fallback userId từ Bearer nếu body thiếu) |
 | POST | /auth/logout | Thu hồi refresh token (revoke) (fallback userId từ Bearer nếu body thiếu) |
 | GET  | /users/profile | Thông tin user hiện tại (Bearer) |
+| GET  | /users | Danh sách user (ADMIN) |
+| PUT  | /users/:id | Cập nhật role / password (ADMIN) |
+| DELETE | /users/:id | Xoá user khác (ADMIN, chặn tự xoá) |
 
 ## Vai trò
 | Role | Quyền chính |
 |------|-------------|
-| ADMIN | Toàn quyền CRUD cameras, recordings, snapshots, events, users |
+| ADMIN | Toàn quyền CRUD cameras, recordings, snapshots, events, users (quản lý user: list / update / delete) |
 | OPERATOR | CRUD camera/snapshot/recording/event (trừ quản lý user)|
 | VIEWER | Chỉ GET (xem) |
 
@@ -67,6 +70,57 @@ curl -Method POST -Uri http://localhost:3000/auth/refresh -Body ("{`"userId`":`"
 # Test rate limit login (cố tình sai mật khẩu >10 lần trong 60s)
 for ($i=1; $i -le 12; $i++) { curl -Method POST -Uri http://localhost:3000/auth/login -Body '{"username":"admin","password":"WRONG"}' -ContentType 'application/json' | Out-Null }
 ```
+
+### Quản lý user (ADMIN)
+#### 1. Liệt kê user
+```powershell
+curl -Headers @{Authorization="Bearer $access"} http://localhost:3000/users
+```
+Kết quả mẫu:
+```json
+[
+	{ "id": "...", "username": "admin", "role": "ADMIN", "createdAt": "2025-09-30T07:20:11.123Z" },
+	{ "id": "...", "username": "operator1", "role": "OPERATOR", "createdAt": "2025-09-30T07:25:45.000Z" }
+]
+```
+
+#### 2. Đổi role hoặc password người dùng
+```powershell
+# Đổi role viewer1 thành OPERATOR
+curl -Method PUT -Uri http://localhost:3000/users/<userId> -Headers @{Authorization="Bearer $access"} -Body '{"role":"OPERATOR"}' -ContentType 'application/json'
+
+# Đổi mật khẩu (ít nhất 6 ký tự)
+curl -Method PUT -Uri http://localhost:3000/users/<userId> -Headers @{Authorization="Bearer $access"} -Body '{"password":"newStrong1"}' -ContentType 'application/json'
+
+# Đổi cả hai
+curl -Method PUT -Uri http://localhost:3000/users/<userId> -Headers @{Authorization="Bearer $access"} -Body '{"role":"VIEWER","password":"newPass123"}' -ContentType 'application/json'
+```
+Response:
+```json
+{ "updated": true }
+```
+Không có trường hợp lệ gửi lên → `{ "updated": false }`.
+
+#### 3. Xoá user (không tự xoá chính mình)
+```powershell
+curl -Method DELETE -Uri http://localhost:3000/users/<userId> -Headers @{Authorization="Bearer $access"}
+```
+Response:
+```json
+{ "deleted": true }
+```
+Nếu cố xoá user đang đăng nhập → 403 với message "Không thể tự xoá tài khoản đang đăng nhập".
+
+#### 4. Ghi chú bảo mật / vận hành
+- Không xoá user admin duy nhất nếu chưa tạo admin thứ hai (tránh lockout).
+- Consider thêm audit log khi thay role / password.
+- Có thể mở rộng thêm pagination cho GET /users nếu số lượng lớn.
+
+#### 5. JSON body hợp lệ cho PUT /users/:id
+```json
+{ "password": "min6chars", "role": "OPERATOR" }
+```
+Trường đều optional; ít nhất một trường phải hợp lệ để cập nhật.
 
 ### Test refresh & logout (chi tiết)
 
