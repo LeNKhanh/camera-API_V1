@@ -83,10 +83,12 @@ Auth:
  - POST /auth/refresh (body: userId, refreshToken) – cấp mới access + refresh (rotate)
  - POST /auth/logout (body: userId) – xoá refresh token (revoke)
 
- Camera (Dahua-only):
- - CRUD: /cameras
- - Verify kết nối RTSP: GET /cameras/:id/verify (ffmpeg thử bắt 1 frame: OK / AUTH / TIMEOUT / CONN / NOT_FOUND)
- - Bộ lọc: enabled, name, createdFrom/createdTo, pagination (page,pageSize), sortBy=createdAt|name, sortDir
+ Camera (Dahua-only + Multi-Channel):
+ - CRUD: /cameras (mỗi record = một channel trên thiết bị IP)
+ - Bulk create nhiều channel: POST /cameras/bulk-channels { ipAddress, port, username, password, channels }
+ - Auto-increment channel nếu IP đã tồn tại (tự chọn channel trống nhỏ nhất: 1,2,3...)
+ - Verify RTSP: GET /cameras/:id/verify (OK / AUTH / TIMEOUT / CONN / NOT_FOUND)
+ - Bộ lọc: enabled, name, channel, createdFrom/createdTo, pagination (page,pageSize), sortBy=createdAt|name, sortDir
 
 Snapshot:
 - POST /snapshots/capture (strategy mặc định RTSP, có FAKE để dev offline)
@@ -112,7 +114,7 @@ PTZ Friendly:
 - GET /cameras/:id/ptz/status
 	- Mapping speed → vector pan/tilt/zoom (trả về trường vector)
 	- Throttle (mặc định 200ms, ENV: PTZ_THROTTLE_MS; debug: PTZ_THROTTLE_DEBUG=1 trả lastDeltaMs)
-	- Ghi log lịch sử vào bảng ptz_logs (giữ tối đa 5 log gần nhất mỗi camera – ENV: PTZ_LOG_MAX)
+	- Ghi log lịch sử vào bảng ptz_logs (giữ tối đa 5 log gần nhất cho mỗi cặp (ILoginID,nChannelID) – ENV: PTZ_LOG_MAX)
 
 Legacy NetSDK module: (ĐÃ GỠ BỎ) trước đây mô phỏng PTZ kiểu session/handle.
 
@@ -125,8 +127,8 @@ Legacy NetSDK module: (ĐÃ GỠ BỎ) trước đây mô phỏng PTZ kiểu ses
 - Event: `docs/EVENT.md`
 - Stream (stub): `docs/STREAM.md`
 ## Lược đồ ngắn gọn
-Entities chính: users, cameras, snapshots, recordings, events.
-Mở rộng thêm: cameras.vendor, cameras.sdk_port; recordings.status (PENDING→RUNNING→COMPLETED/FAILED); ptz_logs (lịch sử PTZ, vector & speed) và retention tự động.
+Entities chính: users, cameras (có channel), snapshots, recordings, events.
+Mở rộng thêm: cameras.vendor, cameras.sdk_port; recordings.status (PENDING→RUNNING→COMPLETED/FAILED); ptz_logs (lịch sử PTZ, vector & speed) và retention tự động (ptz_logs dùng cặp trường ILoginID, nChannelID thay cho camera_id trước đây).
 
 ## Cấu trúc codebase (Architecture Overview)
 ```text
@@ -175,11 +177,11 @@ src/
 	typeorm/
 		entities/
 			user.entity.ts      # users (auth + role)
-			camera.entity.ts    # cameras (RTSP info, vendor ...)
+		camera.entity.ts    # cameras (RTSP info, vendor, channel multi-channel)
 			snapshot.entity.ts  # snapshots (đường dẫn file, time)
 			recording.entity.ts # recordings (file, status, strategy)
 			event.entity.ts     # events (type, ack, camera)
-			ptz-log.entity.ts   # ptz_logs (action, vector, speed, timestamp)
+			ptz-log.entity.ts   # ptz_logs (ILoginID, nChannelID, action, vector, speed, timestamp)
 	migrations/             # (Sẽ sinh khi bật migration flow)
 
 docs/                    
@@ -205,7 +207,9 @@ docs/
 ### Hướng mở rộng
 - Thêm `SwaggerModule` tự sinh OpenAPI docs.
 - Thêm `@nestjs/config` + schema validation cho ENV.
-- Viết migration chính thức: ptz_logs, bổ sung cột ack, strategy (nếu chưa).
+- (ĐÃ LÀM) Migration thay đổi ptz_logs: bỏ camera_id, thêm ILoginID (UUID camera tại thời điểm log) & nChannelID.
+	- Lý do: Chuẩn bị tương lai ánh xạ sang handle SDK hoặc login session abstraction; tránh FK cứng khi cần log cả lệnh trước khi camera entity tồn tại/hoặc sau khi bị xoá.
+	- Mapping hiện tại: ILoginID = camera.id, nChannelID = camera.channel.
 - Adapter PTZ Dahua/ONVIF thật (thay thế logic giả). 
 - Module lưu trữ S3/MinIO cho snapshot/recording.
 - WebSocket / SSE push realtime events & PTZ feedback.
@@ -255,6 +259,29 @@ Giới hạn hiện tại:
 - "login" chỉ tạo handle giả lập, không thật sự kết nối SDK.
 - PTZ trả về JSON xác nhận lệnh; không gửi tới thiết bị thật.
 - Snapshot qua SDK bị vô hiệu (trả lỗi `SNAPSHOT_UNSUPPORTED_NO_SDK`). Bạn vẫn có thể dùng RTSP + FFmpeg snapshot trong module `snapshot`.
+
+### Thay đổi schema ptz_logs (IMPORTANT)
+Phiên bản mới đã refactor bảng `ptz_logs`:
+
+| Trường | Trước | Nay | Ghi chú |
+|--------|-------|-----|---------|
+| camera_id | UUID FK -> cameras | (BỎ) | Loại bỏ FK trực tiếp |
+| ILoginID | (không có) | UUID | Lưu id camera tại thời điểm ghi log (tạm ánh xạ 1-1 camera.id) |
+| nChannelID | (không có) | int | Channel tương ứng camera.channel |
+
+Các trường action, speed, vector_pan/tilt/zoom, duration_ms, created_at giữ nguyên ý nghĩa.
+
+Retention hiện thực thi trên từng cặp (ILoginID, nChannelID). ENV `PTZ_LOG_MAX` áp dụng cho mỗi cặp này.
+
+Migration áp dụng (ví dụ):
+1. Thêm cột ILoginID, nChannelID (nullable)
+2. Backfill từ camera_id & cameras.channel
+3. Drop camera_id
+4. Đặt NOT NULL + index (nếu cần tối ưu)
+
+Nếu bạn nâng cấp từ phiên bản cũ dùng camera_id: chạy `npm run migration:run` để áp dụng thay đổi. Không cần manual script bổ sung.
+
+Lưu ý: Mặc dù hiện tại ILoginID == camera.id, trong tương lai có thể thay bằng giá trị login session/handle thực từ SDK. Ứng dụng client không nên dựa vào FK ràng buộc mà chỉ đọc các field này như metadata.
 
 
 

@@ -48,7 +48,7 @@ Hoặc `{ "moving": false }` nếu không có chuyển động đang active.
 1. ONVIF ContinuousMove / RelativeMove / Stop. (CHƯA)
 2. Mapping speed → vector pan/tilt/zoom. (ĐÃ LÀM)
 3. Throttle tránh spam lệnh. (ĐÃ LÀM - 200ms mặc định)
-4. Ghi log lịch sử PTZ vào bảng riêng `ptz_logs`. (ĐÃ LÀM)
+4. Ghi log lịch sử PTZ vào bảng riêng `ptz_logs` (đÃ refactor: dùng ILoginID + nChannelID thay cho camera_id). (ĐÃ LÀM)
 
 ### Mapping speed → vector
 Server chuyển action + speed thành vector:
@@ -80,20 +80,23 @@ PTZ_THROTTLE_DEBUG=1  # bật trả thêm lastDeltaMs giúp debug
 ```
 
 ### Ghi log lịch sử PTZ
-Entity mới `ptz_logs` gồm:
-| Trường | Giải thích |
-|--------|------------|
-| id | UUID |
-| camera_id | FK camera (CASCADE) |
-| action | PAN_LEFT...STOP |
-| speed | int |
-| vector_pan | int (-speed..speed) |
-| vector_tilt | int |
-| vector_zoom | int |
-| duration_ms | thời gian dự kiến auto stop (nullable) |
-| created_at | timestamp |
+Schema `ptz_logs` (phiên bản mới) gồm:
+| Trường | Kiểu | Giải thích |
+|--------|------|-----------|
+| id | UUID | Khoá chính |
+| ILoginID | UUID | Id camera tại thời điểm log (mapping = camera.id hiện tại, tương lai có thể là login handle) |
+| nChannelID | int | Channel (mapping = camera.channel) |
+| action | enum | PAN_LEFT...STOP |
+| speed | int | Giá trị speed yêu cầu |
+| vector_pan | int | -speed..speed (sau mapping) |
+| vector_tilt | int | -speed..speed |
+| vector_zoom | int | -speed..speed |
+| duration_ms | int nullable | Thời gian dự kiến auto stop (nếu set) |
+| created_at | timestamp | Thời điểm ghi |
 
-Mỗi lệnh (kể cả STOP) đều được insert một bản ghi.
+Trường camera_id (FK) TRƯỚC ĐÂY đã bị loại bỏ để tránh ràng buộc cứng và mở đường log trước/sau vòng đời entity hoặc gắn với session SDK.
+
+Mỗi lệnh (kể cả STOP) đều được insert một bản ghi. Retention áp dụng theo cặp (ILoginID, nChannelID).
 
 ### Giới hạn số log lưu (retention)
 Mặc định chỉ giữ lại 5 bản ghi PTZ mới nhất cho mỗi camera (auto prune các bản cũ hơn).
@@ -103,9 +106,16 @@ PTZ_LOG_MAX=10   # ví dụ giữ 10 thay vì 5
 ```
 Giới hạn mềm: 1..200.
 
-### Lưu ý migration
-Dev: `synchronize=true` tự tạo bảng. Prod: cần sinh migration:
+### Lưu ý migration & nâng cấp
+- Nếu bạn đang nâng cấp từ version dùng `camera_id`:
+  1. Thêm cột ILoginID, nChannelID nullable
+  2. Backfill từ bảng cameras (ILoginID = camera.id, nChannelID = camera.channel)
+  3. Drop camera_id
+  4. Đặt NOT NULL và (tuỳ chọn) index (ILoginID, nChannelID)
+  5. Áp dụng retention trên cặp mới
+
+Script đã được cung cấp trong migration tương ứng (`alter-ptz-logs-loginid-channel`). Chỉ cần:
 ```
-npm run migration:generate
 npm run migration:run
 ```
+Dev environment vẫn có thể dùng synchronize, nhưng khuyến nghị tắt trong production.
