@@ -39,7 +39,7 @@ export class UsersController {
   @Roles('ADMIN')
   async list(
     @Query('username') username?: string,
-    @Query('role') role?: UserRole,
+  @Query('role') role?: string,
     @Query('createdFrom') createdFrom?: string,
     @Query('createdTo') createdTo?: string,
     @Query('page') page?: string,
@@ -51,8 +51,10 @@ export class UsersController {
     if (username) {
       qb.andWhere('LOWER(u.username) LIKE :uName', { uName: `%${username.toLowerCase()}%` });
     }
-    if (role && ['ADMIN','OPERATOR','VIEWER'].includes(role)) {
-      qb.andWhere('u.role = :r', { r: role });
+    if (role) {
+      const roles = role.split(',').map(r => r.trim()).filter(r => ['ADMIN','OPERATOR','VIEWER'].includes(r));
+      if (roles.length === 1) qb.andWhere('u.role = :r', { r: roles[0] });
+      else if (roles.length > 1) qb.andWhere('u.role IN (:...rs)', { rs: roles });
     }
     if (createdFrom) {
       const d = new Date(createdFrom); if (!isNaN(d.getTime())) qb.andWhere('u.created_at >= :cf', { cf: d.toISOString() });
