@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Req, Put, Body, Param, Delete, ParseUUIDPipe, ForbiddenException } from '@nestjs/common';
+import { Controller, Get, UseGuards, Req, Put, Body, Param, Delete, ParseUUIDPipe, ForbiddenException, Query } from '@nestjs/common';
 import { JwtAuthGuard } from '../guards/jwt.guard';
 import { AuthService } from './auth.service';
 import { Repository } from 'typeorm';
@@ -33,13 +33,64 @@ export class UsersController {
     return this.authService.getProfile(req.user.userId);
   }
 
-  // ADMIN: danh sách user (đơn giản, không pagination ở đây)
+  // ADMIN: danh sách user với filter + pagination
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  async list(): Promise<any[]> {
-    const users = await this.usersRepo.find({ order: { createdAt: 'DESC' } });
-    return users.map(u => ({ id: u.id, username: u.username, role: u.role, createdAt: u.createdAt }));
+  async list(
+    @Query('username') username?: string,
+    @Query('role') role?: UserRole,
+    @Query('createdFrom') createdFrom?: string,
+    @Query('createdTo') createdTo?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
+  ): Promise<any> {
+    const qb = this.usersRepo.createQueryBuilder('u');
+    if (username) {
+      qb.andWhere('LOWER(u.username) LIKE :uName', { uName: `%${username.toLowerCase()}%` });
+    }
+    if (role && ['ADMIN','OPERATOR','VIEWER'].includes(role)) {
+      qb.andWhere('u.role = :r', { r: role });
+    }
+    if (createdFrom) {
+      const d = new Date(createdFrom); if (!isNaN(d.getTime())) qb.andWhere('u.created_at >= :cf', { cf: d.toISOString() });
+    }
+    if (createdTo) {
+      const d = new Date(createdTo); if (!isNaN(d.getTime())) qb.andWhere('u.created_at <= :ct', { ct: d.toISOString() });
+    }
+    const allowedSort = ['username','createdAt','role'];
+    const sortCol = allowedSort.includes(sortBy || '') ? (sortBy === 'createdAt' ? 'u.created_at' : `u.${sortBy}`) : 'u.created_at';
+    const dir = (sortDir === 'ASC' || sortDir === 'DESC') ? sortDir : 'DESC';
+    qb.orderBy(sortCol, dir as any);
+
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const pageSizeNum = pageSize ? parseInt(pageSize, 10) : undefined;
+    if (!pageNum || !pageSizeNum) {
+      const rows = await qb.getMany();
+      return rows.map(r => ({ id: r.id, username: r.username, role: r.role, createdAt: r.createdAt }));
+    }
+    const take = Math.min(Math.max(pageSizeNum, 1), 100);
+    const skip = (Math.max(pageNum, 1) - 1) * take;
+    qb.skip(skip).take(take);
+    const [rows, total] = await qb.getManyAndCount();
+    return {
+      data: rows.map(r => ({ id: r.id, username: r.username, role: r.role, createdAt: r.createdAt })),
+      pagination: {
+        page: pageNum,
+        pageSize: take,
+        total,
+        totalPages: Math.ceil(total / take) || 1,
+      },
+      sort: { sortBy: sortBy || 'createdAt', sortDir: dir },
+      filtersApplied: {
+        username: username || null,
+        role: role || null,
+        createdFrom: createdFrom || null,
+        createdTo: createdTo || null,
+      },
+    };
   }
 
   // ADMIN: cập nhật role hoặc password
