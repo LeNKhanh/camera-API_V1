@@ -128,7 +128,7 @@ Query params hỗ trợ:
 | Param | Ví dụ | Mô tả |
 |-------|-------|-------|
 | username | username=ad | Tìm gần đúng (LIKE, case-insensitive) |
-| role | role=OPERATOR | Lọc đúng vai trò |
+| role | role=OPERATOR hoặc role=ADMIN,OPERATOR | Lọc 1 hoặc nhiều vai trò (danh sách phân tách bằng dấu phẩy, ví dụ role=ADMIN,OPERATOR) |
 | createdFrom | createdFrom=2025-09-01 | Thời điểm tạo >= |
 | createdTo | createdTo=2025-09-30 | Thời điểm tạo <= |
 | page | page=1 | Trang (>=1) bật pagination nếu kèm pageSize |
@@ -152,9 +152,17 @@ Ví dụ nâng cao:
 curl -Headers @{Authorization="Bearer $access"} "http://localhost:3000/users?username=op&page=1&pageSize=5&sortBy=username&sortDir=ASC&createdFrom=2025-09-01"
 ```
 
+Multi-role filter ví dụ:
+```powershell
+curl -Headers @{Authorization="Bearer $access"} "http://localhost:3000/users?role=ADMIN,OPERATOR&sortBy=role&sortDir=ASC"
+```
+
+Lưu ý:
+- Không chèn khoảng trắng trong danh sách role (đúng: role=ADMIN,OPERATOR; sai: role=ADMIN, OPERATOR).
+- Backend sẽ tách theo dấu phẩy và dùng mệnh đề SQL IN (...). Role không hợp lệ sẽ bị bỏ qua.
+
 #### 7. Gợi ý mở rộng
 - Thêm xuất CSV /users/export
-- Thêm filter nhiều role (role=ADMIN,OPERATOR)
 - Audit log khi thay đổi role/password
 
 ### Test refresh & logout (chi tiết)
