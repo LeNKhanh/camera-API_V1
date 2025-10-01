@@ -26,31 +26,32 @@ import { CameraService } from './camera.service';
 
 // DTO tạo/cập nhật camera
 class CreateCameraDto {
-  @IsString()
-  name: string;
-  @IsString()
-  ipAddress: string;
-  @IsInt() @Min(1)
-  port: number; // Dahua SDK port
-  @IsOptional() @IsInt() @Min(1)
-  channel?: number = 1;
-  @IsString()
-  username: string;
-  @IsString()
-  password: string;
-  @IsOptional() @IsInt() @Min(1)
-  rtspPort?: number = 554;
-  @IsOptional() @IsBoolean()
-  enabled?: boolean = true;
-  @IsOptional() @IsString()
-  rtspUrl?: string;
-  @IsOptional() @IsString()
-  codec?: string = 'H.264';
-  @IsOptional() @IsString()
-  resolution?: string = '1080p';
+  @IsString() name: string;
+  @IsString() ipAddress: string;
+  @IsInt() @Min(1) port: number; // Dahua SDK port
+  @IsOptional() @IsInt() @Min(1) channel?: number = 1;
+  @IsString() username: string;
+  @IsString() password: string;
+  @IsOptional() @IsInt() @Min(1) rtspPort?: number = 554;
+  @IsOptional() @IsBoolean() enabled?: boolean = true;
+  @IsOptional() @IsString() rtspUrl?: string;
+  @IsOptional() @IsString() codec?: string = 'H.264';
+  @IsOptional() @IsString() resolution?: string = '1080p';
 }
 
-class UpdateCameraDto extends CreateCameraDto {}
+class UpdateCameraDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() ipAddress?: string;
+  @IsOptional() @IsInt() @Min(1) port?: number;
+  @IsOptional() @IsInt() @Min(1) channel?: number;
+  @IsOptional() @IsString() username?: string;
+  @IsOptional() @IsString() password?: string;
+  @IsOptional() @IsInt() @Min(1) rtspPort?: number;
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsString() rtspUrl?: string;
+  @IsOptional() @IsString() codec?: string;
+  @IsOptional() @IsString() resolution?: string;
+}
 
 @Controller('cameras')
 @UseGuards(JwtAuthGuard, RolesGuard)

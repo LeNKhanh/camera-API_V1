@@ -174,7 +174,25 @@ export class CameraService {
   async update(id: string, dto: Partial<Camera>) {
     const cam = await this.findOne(id);
     if (dto.ipAddress) this.validateIp(dto.ipAddress);
+    // Nếu cập nhật channel: đảm bảo unique trong (ipAddress, channel)
+    if (dto.channel && dto.channel > 0) {
+      const targetIp = dto.ipAddress || cam.ipAddress;
+      const duplicate = await this.repo.findOne({ where: { ipAddress: targetIp, channel: dto.channel } });
+      if (duplicate && duplicate.id !== cam.id) {
+        // Theo quy tắc create: nếu channel bị chiếm -> gán MAX+1
+        const existing = await this.repo.createQueryBuilder('c')
+          .select('MAX(c.channel)', 'max')
+          .where('c.ipAddress = :ip', { ip: targetIp })
+          .getRawOne<{ max: number | null }>();
+        dto.channel = (existing?.max || 0) + 1;
+      }
+    }
+    // Nếu đổi username/password mà không cung cấp rtspUrl tùy chỉnh -> rebuild rtspUrl
+    const needRebuildRtsp = (dto.username || dto.password || dto.rtspPort) && !dto.rtspUrl;
     this.repo.merge(cam, dto);
+    if (needRebuildRtsp) {
+      cam.rtspUrl = this.buildRtsp(cam, cam.channel);
+    }
     return this.repo.save(cam);
   }
 
