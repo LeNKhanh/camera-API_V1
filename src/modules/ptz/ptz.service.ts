@@ -60,7 +60,7 @@ export class PtzService {
     // Postgres đặc thù: cần subselect; QueryBuilder hỗ trợ OFFSET
     const idsToDelete = await this.logRepo.createQueryBuilder('l')
       .select('l.id', 'id')
-      .where('l.camera_id = :cid', { cid: cameraId })
+  .where('l."ILoginID" = :cid', { cid: cameraId })
       .orderBy('l.created_at', 'DESC')
       .offset(maxKeep)
       .getRawMany<{ id: string }>();
@@ -75,8 +75,8 @@ export class PtzService {
 
   async execute(cameraId: string, action: PtzAction, speed = 1, durationMs?: number) {
     this.initConfigOnce();
-    const cam = await this.camRepo.findOne({ where: { id: cameraId } });
-    if (!cam) throw new NotFoundException('Camera not found');
+  const cam = await this.camRepo.findOne({ where: { id: cameraId } });
+  if (!cam) throw new NotFoundException('Camera not found');
 
     // Throttle đơn giản tránh spam quá nhanh
     const now = Date.now();
@@ -123,7 +123,8 @@ export class PtzService {
       this.active.delete(cameraId);
       // Log STOP
       await this.logRepo.save(this.logRepo.create({
-        camera: cam,
+        ILoginID: cam.id, // tạm dùng camera.id làm handle
+        nChannelID: cam.channel,
         action,
         speed,
         vectorPan,
@@ -152,7 +153,8 @@ export class PtzService {
     // Trả về giả lập (sau này có thể gọi ONVIF SDK thật)
     // Ghi log
     await this.logRepo.save(this.logRepo.create({
-      camera: cam,
+      ILoginID: cam.id,
+      nChannelID: cam.channel,
       action,
       speed,
       vectorPan,
@@ -186,13 +188,32 @@ export class PtzService {
     // Lấy tối đa maxLogsPerCamera bản ghi gần nhất cho camera
     this.initConfigOnce();
     return this.logRepo.createQueryBuilder('l')
-      .select([
-        'l.id','l.action','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'
-      ])
-      .innerJoin('l.camera','c')
-      .where('c.id = :cid', { cid: cameraId })
+      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'])
+      .where('l."ILoginID" = :cid', { cid: cameraId })
       .orderBy('l.createdAt','DESC')
       .limit(this.maxLogsPerCamera)
       .getMany();
+  }
+
+  // Advanced logs query theo ILoginID & nChannelID + pagination
+  async advancedLogs(opts: { ILoginID?: string; nChannelID?: number; page?: number; pageSize?: number }) {
+    this.initConfigOnce();
+    const qb = this.logRepo.createQueryBuilder('l')
+      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'])
+      .orderBy('l.created_at','DESC');
+    if (opts.ILoginID) qb.andWhere('l."ILoginID" = :ilogin', { ilogin: opts.ILoginID });
+    if (typeof opts.nChannelID === 'number' && !isNaN(opts.nChannelID)) qb.andWhere('l.nChannelID = :chn', { chn: opts.nChannelID });
+    const page = opts.page && opts.page > 0 ? opts.page : undefined;
+    const pageSize = opts.pageSize && opts.pageSize > 0 ? Math.min(opts.pageSize, 200) : undefined;
+    if (page && pageSize) {
+      qb.skip((page - 1) * pageSize).take(pageSize);
+      const [rows, total] = await qb.getManyAndCount();
+      return {
+        data: rows,
+        pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) || 1 },
+        filtersApplied: { ILoginID: opts.ILoginID || null, nChannelID: opts.nChannelID ?? null },
+      };
+    }
+    return qb.getMany();
   }
 }

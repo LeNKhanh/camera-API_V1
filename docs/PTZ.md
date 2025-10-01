@@ -8,6 +8,8 @@ Cung cấp endpoint điều khiển PTZ thân thiện theo `cameraId`, không c�
 |--------|------|------|
 | POST | /cameras/:id/ptz | Gửi lệnh PTZ (PAN_LEFT, ZOOM_IN, ...) |
 | GET | /cameras/:id/ptz/status | Trạng thái chuyển động hiện tại |
+| GET | /cameras/:id/ptz/logs | Log PTZ gần nhất (giới hạn retention) |
+| GET | /ptz/logs/advanced | Tra cứu log nâng cao theo ILoginID & nChannelID |
 
 ## Body ví dụ
 ```json
@@ -105,6 +107,30 @@ Có thể thay đổi:
 PTZ_LOG_MAX=10   # ví dụ giữ 10 thay vì 5
 ```
 Giới hạn mềm: 1..200.
+
+### Tra cứu nâng cao theo ILoginID & nChannelID
+Endpoint mới:
+```
+GET /ptz/logs/advanced?ILoginID=<uuid>&nChannelID=2&page=1&pageSize=20
+```
+Query params:
+| Param | Mô tả |
+|-------|-------|
+| ILoginID | Bắt buộc nếu muốn lọc theo phiên/camera (mapping = camera.id hiện tại) |
+| nChannelID | Lọc theo channel cụ thể (tùy chọn) |
+| page, pageSize | Bật pagination (nếu không gửi trả về mảng) |
+
+Response có pagination:
+```json
+{
+  "data": [{"id":"...","ILoginID":"...","nChannelID":2,"action":"PAN_LEFT","speed":2,"createdAt":"..."}],
+  "pagination": { "page":1, "pageSize":20, "total":42, "totalPages":3 },
+  "filtersApplied": { "ILoginID": "...", "nChannelID": 2 }
+}
+```
+Không pagination: trả mảng các bản ghi.
+
+Lưu ý: Endpoint /cameras/:id/ptz/logs vẫn giới hạn theo PTZ_LOG_MAX để lightweight; endpoint nâng cao dùng được cho khai thác lịch sử dài (tùy DB).
 
 ### Lưu ý migration & nâng cấp
 - Nếu bạn đang nâng cấp từ version dùng `camera_id`:
