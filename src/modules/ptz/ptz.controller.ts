@@ -42,21 +42,4 @@ export class PtzController {
   logs(@Param('id') id: string) {
     return this.svc.logs(id);
   }
-
-  // Advanced logs (pagination & channel filter) at /cameras/:id/ptz/logs/advanced
-  @Get('logs/advanced')
-  @Roles('ADMIN','OPERATOR','VIEWER')
-  advanced(
-    @Param('id') id: string,
-    @Query('nChannelID') nChannelID?: string,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
-  ) {
-    return this.svc.advancedLogs({
-      ILoginID: id,
-      nChannelID: nChannelID ? parseInt(nChannelID, 10) : undefined,
-      page: page ? parseInt(page, 10) : undefined,
-      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
-    });
-  }
 }
