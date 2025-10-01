@@ -42,17 +42,4 @@ export class PtzController {
   logs(@Param('id') id: string) {
     return this.svc.logs(id);
   }
-
-  // Advanced: tra cứu log trực tiếp theo ILoginID & nChannelID (không cần camera route)
-  // GET /ptz/logs/advanced?ILoginID=<uuid>&nChannelID=1&page=1&pageSize=20
-  @Get('/ptz/logs/advanced')
-  @Roles('ADMIN','OPERATOR','VIEWER')
-  advanced(
-    @Query('ILoginID') ILoginID?: string,
-    @Query('nChannelID') nChannelID?: string,
-    @Query('page') page?: string,
-    @Query('pageSize') pageSize?: string,
-  ) {
-    return this.svc.advancedLogs({ ILoginID, nChannelID: nChannelID? parseInt(nChannelID,10): undefined, page: page? parseInt(page,10): undefined, pageSize: pageSize? parseInt(pageSize,10): undefined });
-  }
 }

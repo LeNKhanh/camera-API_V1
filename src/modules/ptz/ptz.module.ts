@@ -7,11 +7,12 @@ import { PtzLog } from '../../typeorm/entities/ptz-log.entity';
 // Barrel import (tạm) để test TS resolution nếu IDE vẫn báo đỏ direct path
 import { PtzService } from './ptz.service';
 import { PtzController } from './ptz.controller';
+import { PtzAdvancedController } from './ptz-advanced.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Camera, PtzLog])],
   providers: [PtzService],
-  controllers: [PtzController],
+  controllers: [PtzController, PtzAdvancedController],
   exports: [PtzService],
 })
 export class PtzModule {}
