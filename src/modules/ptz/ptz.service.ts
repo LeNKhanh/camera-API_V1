@@ -77,6 +77,8 @@ export class PtzService {
     this.initConfigOnce();
   const cam = await this.camRepo.findOne({ where: { id: cameraId } });
   if (!cam) throw new NotFoundException('Camera not found');
+    const ILoginID = cam.id; // expose as ILoginID in response
+    const nChannelID = cam.channel;
 
     // Throttle đơn giản tránh spam quá nhanh
     const now = Date.now();
@@ -87,6 +89,8 @@ export class PtzService {
         ok: false,
         throttled: true,
         minIntervalMs: this.throttleMs,
+        ILoginID,
+        nChannelID,
         ...(this.debugThrottle ? { lastDeltaMs: delta } : {})
       };
     }
@@ -123,8 +127,8 @@ export class PtzService {
       this.active.delete(cameraId);
       // Log STOP
       await this.logRepo.save(this.logRepo.create({
-        ILoginID: cam.id, // tạm dùng camera.id làm handle
-        nChannelID: cam.channel,
+        ILoginID: ILoginID, // tạm dùng camera.id làm handle
+        nChannelID: nChannelID,
         action,
         speed,
         vectorPan,
@@ -134,7 +138,7 @@ export class PtzService {
       }));
       // Prune sau khi lưu
       this.pruneLogs(cameraId).catch(() => {/* ignore prune errors */});
-      return { ok: true, cameraId, stopped: true };  
+      return { ok: true, ILoginID, nChannelID, stopped: true };  
     }
 
     // Hủy chuyển động cũ nếu còn
@@ -153,8 +157,8 @@ export class PtzService {
     // Trả về giả lập (sau này có thể gọi ONVIF SDK thật)
     // Ghi log
     await this.logRepo.save(this.logRepo.create({
-      ILoginID: cam.id,
-      nChannelID: cam.channel,
+      ILoginID,
+      nChannelID,
       action,
       speed,
       vectorPan,
@@ -167,7 +171,8 @@ export class PtzService {
 
     return {
       ok: true,
-      cameraId,
+      ILoginID,
+      nChannelID,
       action,
       vendorCommand: map[action],
       speed,
