@@ -8,6 +8,7 @@ Chụp 1 frame từ camera (RTSP hoặc FAKE). Logic nâng cao (candidate scanni
 | POST | /snapshots/capture | Chụp ảnh |
 | GET | /snapshots | Danh sách |
 | GET | /snapshots/:id | Chi tiết |
+| DELETE | /snapshots/:id | Xoá snapshot + file |
 
 ## Body POST tối thiểu
 ```json
@@ -39,6 +40,9 @@ Override RTSP:
 $token = (curl -Method POST -Uri http://localhost:3000/auth/login -Body '{"username":"admin","password":"admin123"}' -ContentType 'application/json').Content | ConvertFrom-Json | Select -ExpandProperty accessToken
 
 curl -Method POST -Uri http://localhost:3000/snapshots/capture -Headers @{Authorization="Bearer $token"} -Body '{"cameraId":"<id>"}' -ContentType 'application/json'
+
+# Xoá snapshot
+curl -Method DELETE -Uri http://localhost:3000/snapshots/<snapshotId> -Headers @{Authorization="Bearer $token"}
 ```
 
 ## Trả về

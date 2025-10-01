@@ -12,6 +12,7 @@ import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
+import { unlink } from 'fs/promises';
 
 import { Camera } from '../../typeorm/entities/camera.entity';
 import { Snapshot } from '../../typeorm/entities/snapshot.entity';
@@ -298,5 +299,21 @@ export class SnapshotService {
     const snap = await this.snapRepo.findOne({ where: { id }, relations: ['camera'] });
     if (!snap) throw new NotFoundException('Snapshot not found');
     return snap;
+  }
+
+  async remove(id: string) {
+    const snap = await this.snapRepo.findOne({ where: { id } });
+    if (!snap) throw new NotFoundException('Snapshot not found');
+    // Thử xoá file nếu tồn tại
+    if (snap.storagePath && existsSync(snap.storagePath)) {
+      try { await unlink(snap.storagePath); } catch (e) {
+        if (process.env.DEBUG_SNAPSHOT) {
+          // eslint-disable-next-line no-console
+          console.warn('[SNAPSHOT] unlink failed', (e as Error).message);
+        }
+      }
+    }
+    await this.snapRepo.delete(id);
+    return { deleted: true };
   }
 }

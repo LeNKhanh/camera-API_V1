@@ -3,7 +3,7 @@
 // - POST /snapshots/capture: chụp 1 frame đầu tiên và lưu file
 // - GET /snapshots: liệt kê theo camera hoặc tất cả
 // - GET /snapshots/:id: chi tiết
-import { Body, Controller, Get, Param, Post, Query, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards, ParseUUIDPipe, Delete } from '@nestjs/common';
 import { IsOptional, IsString, IsUUID } from 'class-validator';
 
 import { Roles } from '../../common/roles.decorator';
@@ -62,4 +62,11 @@ export class SnapshotController {
   get(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.svc.get(id);
   }
+
+    // Xoá snapshot (ADMIN/OPERATOR) – xoá record + file (nếu còn trên disk)
+    @Delete(':id')
+    @Roles('ADMIN', 'OPERATOR')
+    remove(@Param('id', new ParseUUIDPipe()) id: string) {
+      return this.svc.remove(id);
+    }
 }
