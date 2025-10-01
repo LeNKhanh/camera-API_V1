@@ -5,7 +5,8 @@ Chụp 1 frame từ camera (RTSP hoặc FAKE). Logic nâng cao (candidate scanni
 ## Endpoint
 | Method | Path | Mô tả |
 |--------|------|------|
-| POST | /snapshots/capture | Chụp ảnh |
+| POST | /snapshots/capture | Chụp ảnh (RTSP mặc định / FAKE / strategy trong body) |
+| POST | /snapshots/capture/network | Chụp ảnh qua SDK_NETWORK (ép strategy) |
 | GET | /snapshots | Danh sách |
 | GET | /snapshots/:id | Chi tiết |
 | DELETE | /snapshots/:id | Xoá snapshot + file |
@@ -40,6 +41,9 @@ Override RTSP:
 $token = (curl -Method POST -Uri http://localhost:3000/auth/login -Body '{"username":"admin","password":"admin123"}' -ContentType 'application/json').Content | ConvertFrom-Json | Select -ExpandProperty accessToken
 
 curl -Method POST -Uri http://localhost:3000/snapshots/capture -Headers @{Authorization="Bearer $token"} -Body '{"cameraId":"<id>"}' -ContentType 'application/json'
+
+# Network SDK (ép strategy=SDK_NETWORK)
+curl -Method POST -Uri http://localhost:3000/snapshots/capture/network -Headers @{Authorization="Bearer $token"} -Body '{"cameraId":"<id>"}' -ContentType 'application/json'
 
 # Xoá snapshot
 curl -Method DELETE -Uri http://localhost:3000/snapshots/<snapshotId> -Headers @{Authorization="Bearer $token"}

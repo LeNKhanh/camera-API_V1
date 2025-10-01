@@ -49,6 +49,14 @@ export class SnapshotController {
     return this.svc.capture(dto.cameraId, dto.filename, dto.rtspUrl, dto.strategy);
   }
 
+  // Chụp snapshot qua network SDK (endpoint riêng thay vì truyền strategy trong body)
+  @Post('capture/network')
+  @Roles('ADMIN', 'OPERATOR')
+  captureNetwork(@Body() dto: SnapshotCaptureDto) {
+    // Bỏ qua strategy client gửi, ép dùng SDK_NETWORK
+    return this.svc.capture(dto.cameraId, dto.filename, dto.rtspUrl, 'SDK_NETWORK');
+  }
+
   // Danh sách snapshot theo camera
   @Get()
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
