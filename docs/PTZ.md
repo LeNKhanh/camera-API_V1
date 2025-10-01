@@ -21,14 +21,16 @@ Cung cấp endpoint điều khiển PTZ thân thiện theo `cameraId`, không c�
 - durationMs: nếu đặt sẽ tự dừng sau thời gian này (auto STOP nội bộ)
 
 ## Mô phỏng
-Hiện tại chỉ giả lập (không gửi tới thiết bị). Trả về:
+Hiện tại chỉ giả lập (không gửi tới thiết bị). Trả về (đã chuẩn hoá):
 ```json
 {
   "ok": true,
-  "cameraId": "...",
+  "ILoginID": "...",
+  "nChannelID": 1,
   "action": "PAN_LEFT",
-  "vendorCommand": "DH_PTZ_LEFT_CONTROL",
+  "dwPTZCommand": 3,
   "speed": 2,
+  "vector": { "pan": -2, "tilt": 0, "zoom": 0 },
   "willAutoStopAfterMs": 1500,
   "startedAt": 1696000000000
 }
@@ -86,9 +88,10 @@ Schema `ptz_logs` (phiên bản mới) gồm:
 | Trường | Kiểu | Giải thích |
 |--------|------|-----------|
 | id | UUID | Khoá chính |
-| ILoginID | UUID | Id camera tại thời điểm log (mapping = camera.id hiện tại, tương lai có thể là login handle) |
+| ILoginID | UUID | Id camera tại thời điểm log (mapping = camera.id hiện tại) |
 | nChannelID | int | Channel (mapping = camera.channel) |
 | action | enum | PAN_LEFT...STOP |
+| command_code | int | Mã số dwPTZCommand (0 STOP,1 UP,2 DOWN,3 LEFT,4 RIGHT,5 ZOOM_IN,6 ZOOM_OUT) |
 | speed | int | Giá trị speed yêu cầu |
 | vector_pan | int | -speed..speed (sau mapping) |
 | vector_tilt | int | -speed..speed |
@@ -120,10 +123,10 @@ Query params:
 | nChannelID | Lọc theo channel cụ thể (tùy chọn) |
 | page, pageSize | Bật pagination (nếu không gửi trả về mảng) |
 
-Response có pagination:
+Response có pagination (có thêm commandCode):
 ```json
 {
-  "data": [{"id":"...","ILoginID":"...","nChannelID":2,"action":"PAN_LEFT","speed":2,"createdAt":"..."}],
+  "data": [{"id":"...","ILoginID":"...","nChannelID":2,"action":"PAN_LEFT","commandCode":3,"speed":2,"createdAt":"..."}],
   "pagination": { "page":1, "pageSize":20, "total":42, "totalPages":3 },
   "filtersApplied": { "ILoginID": "...", "nChannelID": 2 }
 }

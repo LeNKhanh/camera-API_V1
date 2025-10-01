@@ -15,6 +15,16 @@ export const PtzActions = {
   STOP: 'STOP',
 } as const;
 export type PtzAction = typeof PtzActions[keyof typeof PtzActions];
+// Global numeric code mapping for PTZ actions
+const commandCodeMap: Record<PtzAction, number> = {
+  STOP: 0,
+  TILT_UP: 1,
+  TILT_DOWN: 2,
+  PAN_LEFT: 3,
+  PAN_RIGHT: 4,
+  ZOOM_IN: 5,
+  ZOOM_OUT: 6,
+};
 
 interface ActiveMove {
   action: PtzAction;
@@ -135,6 +145,7 @@ export class PtzService {
         vectorPan,
         vectorTilt,
         vectorZoom,
+        commandCode: commandCodeMap[action],
         durationMs: 0
       }));
       // Prune sau khi lưu
@@ -165,6 +176,7 @@ export class PtzService {
       vectorPan,
       vectorTilt,
       vectorZoom,
+      commandCode: commandCodeMap[action],
       durationMs: durationMs || null,
     }));
     // Prune async (không chặn response)
@@ -194,7 +206,7 @@ export class PtzService {
     // Lấy tối đa maxLogsPerCamera bản ghi gần nhất cho camera
     this.initConfigOnce();
     return this.logRepo.createQueryBuilder('l')
-      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'])
+      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.commandCode','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'])
       .where('l."ILoginID" = :cid', { cid: cameraId })
       .orderBy('l.createdAt','DESC')
       .limit(this.maxLogsPerCamera)
@@ -205,7 +217,7 @@ export class PtzService {
   async advancedLogs(opts: { ILoginID?: string; nChannelID?: number; page?: number; pageSize?: number }) {
     this.initConfigOnce();
     const qb = this.logRepo.createQueryBuilder('l')
-      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'])
+      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.commandCode','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'])
       .orderBy('l.created_at','DESC');
     if (opts.ILoginID) qb.andWhere('l."ILoginID" = :ilogin', { ilogin: opts.ILoginID });
     if (typeof opts.nChannelID === 'number' && !isNaN(opts.nChannelID)) qb.andWhere('l.nChannelID = :chn', { chn: opts.nChannelID });

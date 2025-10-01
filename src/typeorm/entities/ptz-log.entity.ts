@@ -1,5 +1,6 @@
 // Entity PtzLog: ghi lịch sử lệnh PTZ
 import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, JoinColumn } from 'typeorm';
+const dateType = process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamptz';
 import { Camera } from './camera.entity';
 
 @Entity({ name: 'ptz_logs' })
@@ -7,12 +8,21 @@ export class PtzLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @ManyToOne(() => Camera, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'camera_id' })
-  camera: Camera;
+  // Thay vì foreign key trực tiếp -> lưu thông tin handle đăng nhập SDK & channel
+  // ILoginID: định danh phiên đăng nhập (có thể ánh xạ camera.id hoặc handle thật trong tương lai)
+  @Column({ name: 'ILoginID', type: 'varchar', length: 64 })
+  ILoginID: string;
+
+  // nChannelID: channel của camera tại thời điểm ghi log
+  @Column({ name: 'nChannelID', type: 'int', default: 1 })
+  nChannelID: number;
 
   @Column({ type: 'varchar', length: 40 })
   action: string; // PAN_LEFT / PAN_RIGHT / ... / STOP
+
+  // dwPTZCommand numeric code (mapping action -> vendor code) mới thêm để thuận tiện debug/phân tích
+  @Column({ name: 'command_code', type: 'int', default: 0 })
+  commandCode: number;
 
   @Column({ type: 'int', default: 1 })
   speed: number;
@@ -29,6 +39,6 @@ export class PtzLog {
   @Column({ name: 'duration_ms', type: 'int', nullable: true })
   durationMs?: number | null;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: dateType as any })
   createdAt: Date;
 }
