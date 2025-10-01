@@ -96,15 +96,16 @@ export class PtzService {
     }
     this.lastCommandAt.set(cameraId, now);
 
-    // Mapping hành động -> lệnh Dahua giả lập
-    const map: Record<PtzAction, string> = {
-      PAN_LEFT: 'DH_PTZ_LEFT_CONTROL',
-      PAN_RIGHT: 'DH_PTZ_RIGHT_CONTROL',
-      TILT_UP: 'DH_PTZ_UP_CONTROL',
-      TILT_DOWN: 'DH_PTZ_DOWN_CONTROL',
-      ZOOM_IN: 'DH_PTZ_ZOOM_ADD_CONTROL',
-      ZOOM_OUT: 'DH_PTZ_ZOOM_DEC_CONTROL',
-      STOP: 'DH_PTZ_STOP'
+    // Mapping hành động -> mã lệnh số (dwPTZCommand) theo bảng chuẩn nội bộ
+    // 0 STOP, 1 UP, 2 DOWN, 3 LEFT, 4 RIGHT, 5 ZOOM_IN, 6 ZOOM_OUT
+    const commandCodeMap: Record<PtzAction, number> = {
+      STOP: 0,
+      TILT_UP: 1,
+      TILT_DOWN: 2,
+      PAN_LEFT: 3,
+      PAN_RIGHT: 4,
+      ZOOM_IN: 5,
+      ZOOM_OUT: 6,
     } as const;
 
     // Mapping speed -> vector pan/tilt/zoom (-1..1 * speed)
@@ -174,7 +175,7 @@ export class PtzService {
       ILoginID,
       nChannelID,
       action,
-      vendorCommand: map[action],
+      dwPTZCommand: commandCodeMap[action],
       speed,
       vector: { pan: vectorPan, tilt: vectorTilt, zoom: vectorZoom },
       willAutoStopAfterMs: durationMs || null,
