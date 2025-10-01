@@ -39,6 +39,14 @@ export class PtzLog {
   @Column({ name: 'duration_ms', type: 'int', nullable: true })
   durationMs?: number | null;
 
+  // Raw vendor parameters (tùy lệnh – có thể null)
+  @Column({ name: 'param1', type: 'int', nullable: true })
+  param1?: number | null;
+  @Column({ name: 'param2', type: 'int', nullable: true })
+  param2?: number | null;
+  @Column({ name: 'param3', type: 'int', nullable: true })
+  param3?: number | null;
+
   @CreateDateColumn({ name: 'created_at', type: dateType as any })
   createdAt: Date;
 }

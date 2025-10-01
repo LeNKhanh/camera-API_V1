@@ -12,6 +12,17 @@ export const PtzActions = {
   TILT_DOWN: 'TILT_DOWN',
   ZOOM_IN: 'ZOOM_IN',
   ZOOM_OUT: 'ZOOM_OUT',
+  FOCUS_NEAR: 'FOCUS_NEAR',
+  FOCUS_FAR: 'FOCUS_FAR',
+  IRIS_OPEN: 'IRIS_OPEN',
+  IRIS_CLOSE: 'IRIS_CLOSE',
+  PRESET_GOTO: 'PRESET_GOTO',
+  PRESET_SET: 'PRESET_SET',
+  PRESET_DELETE: 'PRESET_DELETE',
+  PAN_LEFT_UP: 'PAN_LEFT_UP',
+  PAN_RIGHT_UP: 'PAN_RIGHT_UP',
+  PAN_LEFT_DOWN: 'PAN_LEFT_DOWN',
+  PAN_RIGHT_DOWN: 'PAN_RIGHT_DOWN',
   STOP: 'STOP',
 } as const;
 export type PtzAction = typeof PtzActions[keyof typeof PtzActions];
@@ -24,6 +35,17 @@ const commandCodeMap: Record<PtzAction, number> = {
   PAN_RIGHT: 4,
   ZOOM_IN: 5,
   ZOOM_OUT: 6,
+  FOCUS_NEAR: 7,
+  FOCUS_FAR: 8,
+  IRIS_OPEN: 9,
+  IRIS_CLOSE: 10,
+  PRESET_GOTO: 20,
+  PRESET_SET: 21,
+  PRESET_DELETE: 22,
+  PAN_LEFT_UP: 30,
+  PAN_RIGHT_UP: 31,
+  PAN_LEFT_DOWN: 32,
+  PAN_RIGHT_DOWN: 33,
 };
 
 interface ActiveMove {
@@ -83,7 +105,7 @@ export class PtzService {
       .execute();
   }
 
-  async execute(cameraId: string, action: PtzAction, speed = 1, durationMs?: number) {
+  async execute(cameraId: string, action: PtzAction, speed = 1, durationMs?: number, p1?: number, p2?: number, p3?: number) {
     this.initConfigOnce();
   const cam = await this.camRepo.findOne({ where: { id: cameraId } });
   if (!cam) throw new NotFoundException('Camera not found');
@@ -106,17 +128,46 @@ export class PtzService {
     }
     this.lastCommandAt.set(cameraId, now);
 
-    // Mapping hành động -> mã lệnh số (dwPTZCommand) theo bảng chuẩn nội bộ
-    // 0 STOP, 1 UP, 2 DOWN, 3 LEFT, 4 RIGHT, 5 ZOOM_IN, 6 ZOOM_OUT
-    const commandCodeMap: Record<PtzAction, number> = {
-      STOP: 0,
-      TILT_UP: 1,
-      TILT_DOWN: 2,
-      PAN_LEFT: 3,
-      PAN_RIGHT: 4,
-      ZOOM_IN: 5,
-      ZOOM_OUT: 6,
-    } as const;
+    // Param mapping theo bảng vendor: (đơn giản hoá)
+    // - Up/Down dùng vertical speed param2 (1..8)
+    // - Left/Right dùng horizontal speed param2 (1..8)
+    // - Zoom/Focus/Iris dùng multi-speed param2
+    // - Preset: param2 = preset number
+    // - Diagonal: param1 vertical speed, param2 horizontal speed
+    const normSpeed = Math.max(1, Math.min(8, speed || 1));
+    let param1: number | null = null;
+    let param2: number | null = null;
+    let param3: number | null = null;
+    switch (action) {
+      case 'TILT_UP':
+      case 'TILT_DOWN':
+        param2 = normSpeed; break;
+      case 'PAN_LEFT':
+      case 'PAN_RIGHT':
+        param2 = normSpeed; break;
+      case 'ZOOM_IN':
+      case 'ZOOM_OUT':
+      case 'FOCUS_NEAR':
+      case 'FOCUS_FAR':
+      case 'IRIS_OPEN':
+      case 'IRIS_CLOSE':
+        param2 = normSpeed; break;
+      case 'PRESET_GOTO':
+      case 'PRESET_SET':
+      case 'PRESET_DELETE':
+        param2 = typeof p2 === 'number' ? p2 : p1 ?? 1; break;
+      case 'PAN_LEFT_UP':
+      case 'PAN_RIGHT_UP':
+      case 'PAN_LEFT_DOWN':
+      case 'PAN_RIGHT_DOWN':
+        param1 = normSpeed; // vertical
+        param2 = normSpeed; // horizontal
+        break;
+    }
+    // Override nếu caller truyền cụ thể
+    if (typeof p1 === 'number') param1 = p1;
+    if (typeof p2 === 'number') param2 = p2;
+    if (typeof p3 === 'number') param3 = p3;
 
     // Mapping speed -> vector pan/tilt/zoom (-1..1 * speed)
     let vectorPan = 0, vectorTilt = 0, vectorZoom = 0;
@@ -146,6 +197,7 @@ export class PtzService {
         vectorTilt,
         vectorZoom,
         commandCode: commandCodeMap[action],
+        param1, param2, param3,
         durationMs: 0
       }));
       // Prune sau khi lưu
@@ -177,6 +229,7 @@ export class PtzService {
       vectorTilt,
       vectorZoom,
       commandCode: commandCodeMap[action],
+      param1, param2, param3,
       durationMs: durationMs || null,
     }));
     // Prune async (không chặn response)
@@ -190,6 +243,7 @@ export class PtzService {
       dwPTZCommand: commandCodeMap[action],
       speed,
       vector: { pan: vectorPan, tilt: vectorTilt, zoom: vectorZoom },
+      params: { param1, param2, param3 },
       willAutoStopAfterMs: durationMs || null,
       startedAt,
       ...(this.debugThrottle ? { lastDeltaMs: delta } : {})
@@ -206,7 +260,7 @@ export class PtzService {
     // Lấy tối đa maxLogsPerCamera bản ghi gần nhất cho camera
     this.initConfigOnce();
     return this.logRepo.createQueryBuilder('l')
-      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.commandCode','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'])
+      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.commandCode','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.param1','l.param2','l.param3','l.durationMs','l.createdAt'])
       .where('l."ILoginID" = :cid', { cid: cameraId })
       .orderBy('l.createdAt','DESC')
       .limit(this.maxLogsPerCamera)
@@ -217,7 +271,7 @@ export class PtzService {
   async advancedLogs(opts: { ILoginID?: string; nChannelID?: number; page?: number; pageSize?: number }) {
     this.initConfigOnce();
     const qb = this.logRepo.createQueryBuilder('l')
-      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.commandCode','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.durationMs','l.createdAt'])
+      .select(['l.id','l.ILoginID','l.nChannelID','l.action','l.commandCode','l.speed','l.vectorPan','l.vectorTilt','l.vectorZoom','l.param1','l.param2','l.param3','l.durationMs','l.createdAt'])
       .orderBy('l.created_at','DESC');
     if (opts.ILoginID) qb.andWhere('l."ILoginID" = :ilogin', { ilogin: opts.ILoginID });
     if (typeof opts.nChannelID === 'number' && !isNaN(opts.nChannelID)) qb.andWhere('l.nChannelID = :chn', { chn: opts.nChannelID });

@@ -17,6 +17,10 @@ class PtzCommandDto {
   @IsOptional()
   @IsInt()
   durationMs?: number; // auto stop
+
+  @IsOptional() @IsInt() param1?: number;
+  @IsOptional() @IsInt() param2?: number;
+  @IsOptional() @IsInt() param3?: number;
 }
 
 @Controller('cameras/:id/ptz')
@@ -27,7 +31,7 @@ export class PtzController {
   @Post()
   @Roles('ADMIN','OPERATOR')
   move(@Param('id') id: string, @Body() dto: PtzCommandDto) {
-    return this.svc.execute(id, dto.action, dto.speed, dto.durationMs);
+    return this.svc.execute(id, dto.action, dto.speed, dto.durationMs, dto.param1, dto.param2, dto.param3);
   }
 
   @Get('status')
