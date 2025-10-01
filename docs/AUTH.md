@@ -115,12 +115,47 @@ Nếu cố xoá user đang đăng nhập → 403 với message "Không thể t�
 - Không xoá user admin duy nhất nếu chưa tạo admin thứ hai (tránh lockout).
 - Consider thêm audit log khi thay role / password.
 - Có thể mở rộng thêm pagination cho GET /users nếu số lượng lớn.
+ - ĐÃ THÊM filter + pagination cho GET /users (xem bên dưới).
 
 #### 5. JSON body hợp lệ cho PUT /users/:id
 ```json
 { "password": "min6chars", "role": "OPERATOR" }
 ```
 Trường đều optional; ít nhất một trường phải hợp lệ để cập nhật.
+
+#### 6. Filter & Pagination cho GET /users (mới)
+Query params hỗ trợ:
+| Param | Ví dụ | Mô tả |
+|-------|-------|-------|
+| username | username=ad | Tìm gần đúng (LIKE, case-insensitive) |
+| role | role=OPERATOR | Lọc đúng vai trò |
+| createdFrom | createdFrom=2025-09-01 | Thời điểm tạo >= |
+| createdTo | createdTo=2025-09-30 | Thời điểm tạo <= |
+| page | page=1 | Trang (>=1) bật pagination nếu kèm pageSize |
+| pageSize | pageSize=10 | Kích thước trang (1..100) |
+| sortBy | sortBy=username | username | role | createdAt (mặc định createdAt) |
+| sortDir | sortDir=ASC | ASC hoặc DESC (mặc định DESC) |
+
+Nếu không truyền page/pageSize → trả mảng đơn giản.
+Nếu có pagination → trả object:
+```json
+{
+	"data": [{"id":"...","username":"admin","role":"ADMIN","createdAt":"..."}],
+	"pagination": { "page": 1, "pageSize": 5, "total": 12, "totalPages": 3 },
+	"sort": { "sortBy": "createdAt", "sortDir": "DESC" },
+	"filtersApplied": { "username": null, "role": null, "createdFrom": null, "createdTo": null }
+}
+```
+
+Ví dụ nâng cao:
+```powershell
+curl -Headers @{Authorization="Bearer $access"} "http://localhost:3000/users?username=op&page=1&pageSize=5&sortBy=username&sortDir=ASC&createdFrom=2025-09-01"
+```
+
+#### 7. Gợi ý mở rộng
+- Thêm xuất CSV /users/export
+- Thêm filter nhiều role (role=ADMIN,OPERATOR)
+- Audit log khi thay đổi role/password
 
 ### Test refresh & logout (chi tiết)
 
