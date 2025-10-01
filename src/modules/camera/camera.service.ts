@@ -14,10 +14,23 @@ export class CameraService {
   // Tạo mới camera
   async create(dto: any) {
     this.validateIp(dto.ipAddress);
+    // Logic mới: nếu IP đã tồn tại -> channel = (max channel hiện có cho IP) + 1
+    // Nếu IP chưa tồn tại -> dùng channel request (nếu hợp lệ) hoặc 1.
+    let channel: number;
+    const existing = await this.repo.createQueryBuilder('c')
+      .select('MAX(c.channel)', 'max')
+      .where('c.ipAddress = :ip', { ip: dto.ipAddress })
+      .getRawOne<{ max: number | null }>();
+    if (existing && existing.max) {
+      channel = (existing.max || 0) + 1;
+    } else {
+      channel = dto.channel && dto.channel > 0 ? dto.channel : 1;
+    }
     const cam: Partial<Camera> = {
       name: dto.name,
       ipAddress: dto.ipAddress,
       sdkPort: dto.port,
+      channel,
       username: dto.username,
       password: dto.password,
       rtspPort: dto.rtspPort ?? 554,
@@ -26,9 +39,49 @@ export class CameraService {
       resolution: dto.resolution || '1080p',
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : true,
     };
-    cam.rtspUrl = dto.rtspUrl || `rtsp://${encodeURIComponent(cam.username!)}:${encodeURIComponent(cam.password!)}@${cam.ipAddress}:${cam.rtspPort}/cam/realmonitor?channel=1&subtype=0`;
+    cam.rtspUrl = dto.rtspUrl || this.buildRtsp(cam, channel);
     const entity = this.repo.create(cam);
     return this.repo.save(entity);
+  }
+
+  // Bulk create multiple channels for same device (e.g., NVR with n channels)
+  async createMulti(dto: any & { channels: number }) {
+    this.validateIp(dto.ipAddress);
+    const total = dto.channels && dto.channels > 0 ? Math.min(dto.channels, 256) : 1;
+    const results: Camera[] = [];
+    for (let ch = 1; ch <= total; ch++) {
+      const partial: Partial<Camera> = {
+        name: `${dto.name || 'Cam'} CH${ch}`,
+        ipAddress: dto.ipAddress,
+        sdkPort: dto.port,
+        channel: ch,
+        username: dto.username,
+        password: dto.password,
+        rtspPort: dto.rtspPort ?? 554,
+        vendor: 'dahua',
+        codec: dto.codec || 'H.264',
+        resolution: dto.resolution || '1080p',
+        enabled: true,
+      };
+      partial.rtspUrl = this.buildRtsp(partial, ch);
+      const entity = this.repo.create(partial);
+      try {
+        results.push(await this.repo.save(entity));
+      } catch (e: any) {
+        // Skip duplicates (unique constraint) silently when rerun
+        if (!/unique/i.test(e.message)) throw e;
+      }
+    }
+    return results;
+  }
+
+  private buildRtsp(cam: Partial<Camera>, channel: number) {
+    const user = encodeURIComponent(cam.username!);
+    const pass = encodeURIComponent(cam.password!);
+    const host = cam.ipAddress;
+    const port = cam.rtspPort || 554;
+    // Dahua typical pattern: /cam/realmonitor?channel={n}&subtype=0
+    return `rtsp://${user}:${pass}@${host}:${port}/cam/realmonitor?channel=${channel}&subtype=0`;
   }
 
   // Lấy danh sách camera với filter, hỗ trợ pagination + sort + date range
@@ -36,6 +89,8 @@ export class CameraService {
     enabled?: boolean;
     name?: string;
   vendor?: string; // deprecated – ignored
+    ipAddress?: string;
+    channel?: number;
     createdFrom?: Date;
     createdTo?: Date;
     page?: number;
@@ -45,7 +100,7 @@ export class CameraService {
   }) {
     const qb = this.repo.createQueryBuilder('c')
       .select([
-        'c.id', 'c.name', 'c.ipAddress', 'c.sdkPort', 'c.rtspPort', 'c.enabled', 'c.codec', 'c.resolution', 'c.createdAt', 'c.updatedAt'
+        'c.id', 'c.name', 'c.ipAddress', 'c.channel', 'c.sdkPort', 'c.rtspPort', 'c.enabled', 'c.codec', 'c.resolution', 'c.createdAt', 'c.updatedAt'
       ]);
 
     if (filter) {
@@ -54,6 +109,12 @@ export class CameraService {
       }
       if (filter.name && filter.name.trim().length > 0) {
         qb.andWhere('LOWER(c.name) LIKE :name', { name: `%${filter.name.toLowerCase()}%` });
+      }
+      if (filter.ipAddress && filter.ipAddress.trim().length > 0) {
+        qb.andWhere('c.ipAddress = :ip', { ip: filter.ipAddress.trim() });
+      }
+      if (typeof filter.channel === 'number' && filter.channel > 0) {
+        qb.andWhere('c.channel = :channel', { channel: filter.channel });
       }
       // vendor filter removed (fixed to dahua)
       if (filter.createdFrom) {
@@ -88,6 +149,8 @@ export class CameraService {
         filtersApplied: {
           enabled: filter?.enabled,
           name: filter?.name,
+          ipAddress: filter?.ipAddress,
+          channel: filter?.channel,
           // vendor removed
           createdFrom: filter?.createdFrom,
           createdTo: filter?.createdTo,
@@ -97,6 +160,8 @@ export class CameraService {
     // Không pagination: trả về mảng đơn giản (giữ backward compatibility)
     return qb.getMany();
   }
+
+  // (nextAvailableChannel bị loại bỏ: chuyển sang mô hình max+1 tuần tự)
 
   // Lấy 1 camera theo id
   async findOne(id: string) {

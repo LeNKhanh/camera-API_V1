@@ -173,6 +173,7 @@ curl -Method DELETE -Uri http://localhost:3000/cameras/<id> -Headers @{Authoriza
 | enabled | boolean | enabled=true | Lọc theo trạng thái bật/tắt |
 | name | string | name=Kho | Tên chứa chuỗi (LIKE, không phân biệt hoa thường) |
 | channel | number | channel=3 | Lọc đúng channel |
+| ipAddress | string | ipAddress=192.168.1.50 | Lọc đúng theo IP (kết hợp channel để truy một kênh cụ thể) |
 | createdFrom | date/ISO | createdFrom=2025-09-01 | Lọc tạo từ ngày (>=) |
 | createdTo | date/ISO | createdTo=2025-09-29 | Lọc tạo đến ngày (<=) |
 | page | number | page=2 | Trang (>=1) – kích hoạt pagination nếu kèm pageSize |
@@ -185,6 +186,7 @@ Quy tắc:
 - Nếu truyền page & pageSize hợp lệ → trả về OBJECT có `data` + `pagination`.
 - Bỏ tham số vendor / vendors (cố định Dahua).
 - Channel auto tăng nếu không gửi hoặc gửi channel đã chiếm → hệ thống gán channel tiếp theo còn trống.
+ - Có thể kết hợp ipAddress + channel để lấy chính xác một kênh trên thiết bị đa kênh.
 
 ### Ví dụ request kết hợp
 ```

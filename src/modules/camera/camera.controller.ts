@@ -32,6 +32,8 @@ class CreateCameraDto {
   ipAddress: string;
   @IsInt() @Min(1)
   port: number; // Dahua SDK port
+  @IsOptional() @IsInt() @Min(1)
+  channel?: number = 1;
   @IsString()
   username: string;
   @IsString()
@@ -62,12 +64,22 @@ export class CameraController {
     return this.cameraService.create(dto);
   }
 
+  // Bulk create channels for one device: POST /cameras/bulk-channels { ipAddress, port, username, password, channels }
+  @HttpPost('bulk-channels')
+  @Roles('ADMIN', 'OPERATOR')
+  createMultiple(@Body() dto: any) {
+    // dto.channels: number of channels
+    return this.cameraService.createMulti(dto);
+  }
+
   // Danh sách camera (filter optional: enabled=true|false, name chứa) – Dahua only
   @Get()
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
   findAll(
     @Query('enabled') enabled?: string,
     @Query('name') name?: string,
+    @Query('ipAddress') ipAddress?: string,
+  @Query('channel') channel?: string,
     @Query('createdFrom') createdFrom?: string,
     @Query('createdTo') createdTo?: string,
     @Query('page') page?: string,
@@ -99,7 +111,9 @@ export class CameraController {
 
     return this.cameraService.findAll({
       enabled: enabledBool,
-      name,
+  name,
+  ipAddress: ipAddress && ipAddress.trim().length > 0 ? ipAddress.trim() : undefined,
+  channel: channel ? parseInt(channel, 10) : undefined,
   // vendor fixed 'dahua'
       createdFrom: createdFromDate,
       createdTo: createdToDate,
