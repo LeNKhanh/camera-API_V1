@@ -5,11 +5,18 @@ import { Camera } from '../../typeorm/entities/camera.entity';
 import { PtzLog } from '../../typeorm/entities/ptz-log.entity';
 
 // Runtime enum object (dùng cho class-validator IsEnum)
+// Thêm phần mở rộng .js để tránh lỗi khi chạy trong môi trường Node CommonJS sau build.
+import { StandardPtzActionCodes } from './ptz-command-map';
+
 export const PtzActions = {
   PAN_LEFT: 'PAN_LEFT',
   PAN_RIGHT: 'PAN_RIGHT',
   TILT_UP: 'TILT_UP',
   TILT_DOWN: 'TILT_DOWN',
+  PAN_LEFT_UP: 'PAN_LEFT_UP',
+  PAN_RIGHT_UP: 'PAN_RIGHT_UP',
+  PAN_LEFT_DOWN: 'PAN_LEFT_DOWN',
+  PAN_RIGHT_DOWN: 'PAN_RIGHT_DOWN',
   ZOOM_IN: 'ZOOM_IN',
   ZOOM_OUT: 'ZOOM_OUT',
   FOCUS_NEAR: 'FOCUS_NEAR',
@@ -19,33 +26,44 @@ export const PtzActions = {
   PRESET_GOTO: 'PRESET_GOTO',
   PRESET_SET: 'PRESET_SET',
   PRESET_DELETE: 'PRESET_DELETE',
-  PAN_LEFT_UP: 'PAN_LEFT_UP',
-  PAN_RIGHT_UP: 'PAN_RIGHT_UP',
-  PAN_LEFT_DOWN: 'PAN_LEFT_DOWN',
-  PAN_RIGHT_DOWN: 'PAN_RIGHT_DOWN',
+  AUTO_SCAN_START: 'AUTO_SCAN_START',
+  AUTO_SCAN_STOP: 'AUTO_SCAN_STOP',
+  PATTERN_START: 'PATTERN_START',
+  PATTERN_STOP: 'PATTERN_STOP',
+  PATTERN_RUN: 'PATTERN_RUN',
+  TOUR_START: 'TOUR_START',
+  TOUR_STOP: 'TOUR_STOP',
   STOP: 'STOP',
 } as const;
 export type PtzAction = typeof PtzActions[keyof typeof PtzActions];
-// Global numeric code mapping for PTZ actions
+
+// Build mapping from external code list; unknown extended actions (AUTO_SCAN/PATTERN...) must exist in file
 const commandCodeMap: Record<PtzAction, number> = {
-  STOP: 0,
-  TILT_UP: 1,
-  TILT_DOWN: 2,
-  PAN_LEFT: 3,
-  PAN_RIGHT: 4,
-  ZOOM_IN: 5,
-  ZOOM_OUT: 6,
-  FOCUS_NEAR: 7,
-  FOCUS_FAR: 8,
-  IRIS_OPEN: 9,
-  IRIS_CLOSE: 10,
-  PRESET_GOTO: 20,
-  PRESET_SET: 21,
-  PRESET_DELETE: 22,
-  PAN_LEFT_UP: 30,
-  PAN_RIGHT_UP: 31,
-  PAN_LEFT_DOWN: 32,
-  PAN_RIGHT_DOWN: 33,
+  STOP: StandardPtzActionCodes.STOP,
+  TILT_UP: StandardPtzActionCodes.TILT_UP,
+  TILT_DOWN: StandardPtzActionCodes.TILT_DOWN,
+  PAN_LEFT: StandardPtzActionCodes.PAN_LEFT,
+  PAN_RIGHT: StandardPtzActionCodes.PAN_RIGHT,
+  PAN_LEFT_UP: StandardPtzActionCodes.PAN_LEFT_UP,
+  PAN_RIGHT_UP: StandardPtzActionCodes.PAN_RIGHT_UP,
+  PAN_LEFT_DOWN: StandardPtzActionCodes.PAN_LEFT_DOWN,
+  PAN_RIGHT_DOWN: StandardPtzActionCodes.PAN_RIGHT_DOWN,
+  ZOOM_IN: StandardPtzActionCodes.ZOOM_IN,
+  ZOOM_OUT: StandardPtzActionCodes.ZOOM_OUT,
+  FOCUS_NEAR: StandardPtzActionCodes.FOCUS_NEAR,
+  FOCUS_FAR: StandardPtzActionCodes.FOCUS_FAR,
+  IRIS_OPEN: StandardPtzActionCodes.IRIS_OPEN,
+  IRIS_CLOSE: StandardPtzActionCodes.IRIS_CLOSE,
+  PRESET_GOTO: StandardPtzActionCodes.PRESET_GOTO,
+  PRESET_SET: StandardPtzActionCodes.PRESET_SET,
+  PRESET_DELETE: StandardPtzActionCodes.PRESET_DELETE,
+  AUTO_SCAN_START: StandardPtzActionCodes.AUTO_SCAN_START,
+  AUTO_SCAN_STOP: StandardPtzActionCodes.AUTO_SCAN_STOP,
+  PATTERN_START: StandardPtzActionCodes.PATTERN_START,
+  PATTERN_STOP: StandardPtzActionCodes.PATTERN_STOP,
+  PATTERN_RUN: StandardPtzActionCodes.PATTERN_RUN,
+  TOUR_START: StandardPtzActionCodes.TOUR_START,
+  TOUR_STOP: StandardPtzActionCodes.TOUR_STOP,
 };
 
 interface ActiveMove {
@@ -134,7 +152,7 @@ export class PtzService {
     // - Zoom/Focus/Iris dùng multi-speed param2
     // - Preset: param2 = preset number
     // - Diagonal: param1 vertical speed, param2 horizontal speed
-    const normSpeed = Math.max(1, Math.min(8, speed || 1));
+    const normSpeed = Math.max(1, Math.min(10, speed || 1));
     let param1: number | null = null;
     let param2: number | null = null;
     let param3: number | null = null;
@@ -163,6 +181,15 @@ export class PtzService {
         param1 = normSpeed; // vertical
         param2 = normSpeed; // horizontal
         break;
+      case 'AUTO_SCAN_START':
+      case 'AUTO_SCAN_STOP':
+      case 'PATTERN_START':
+      case 'PATTERN_STOP':
+      case 'PATTERN_RUN':
+      case 'TOUR_START':
+      case 'TOUR_STOP':
+        // Các lệnh mở rộng hiện tại không cần param mặc định
+        break;
     }
     // Override nếu caller truyền cụ thể
     if (typeof p1 === 'number') param1 = p1;
@@ -178,9 +205,19 @@ export class PtzService {
       case 'TILT_DOWN': vectorTilt = -speed; break;
       case 'ZOOM_IN': vectorZoom = speed; break;
       case 'ZOOM_OUT': vectorZoom = -speed; break;
+      // Diagonal moves: combine pan & tilt components. We deliberately do NOT scale by 1/sqrt(2)
+      // to preserve supplied speed on both axes (vendor protocol often accepts independent speeds).
+      // If you want normalized diagonal magnitude, adjust with: const diag = speed / Math.SQRT2.
+      case 'PAN_LEFT_UP': vectorPan = -speed; vectorTilt = speed; break;
+      case 'PAN_RIGHT_UP': vectorPan = speed; vectorTilt = speed; break;
+      case 'PAN_LEFT_DOWN': vectorPan = -speed; vectorTilt = -speed; break;
+      case 'PAN_RIGHT_DOWN': vectorPan = speed; vectorTilt = -speed; break;
       case 'STOP':
         // STOP resets vectors
         vectorPan = 0; vectorTilt = 0; vectorZoom = 0; break;
+      default:
+        // Các lệnh không ảnh hưởng vector (preset / pattern / tour / auto scan)
+        break;
     }
 
     if (action === 'STOP') {

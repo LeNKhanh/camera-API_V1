@@ -1,5 +1,7 @@
 // Entity User: ánh xạ bảng users và kiểu role
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+
+const dateType = process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamptz';
 
 export type UserRole = 'ADMIN' | 'OPERATOR' | 'VIEWER';
 
@@ -27,10 +29,13 @@ export class User {
   refreshTokenHash: string | null;
 
   // Thời điểm refresh token hết hạn (UTC). Cho phép chủ động thu hồi trước khi JWT tự hết hạn
-  @Column({ name: 'refresh_token_exp', type: 'timestamptz', nullable: true })
+  @Column({ name: 'refresh_token_exp', type: dateType as any, nullable: true })
   refreshTokenExpiresAt: Date | null;
 
   // Thời điểm tạo
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: dateType as any })
   createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: dateType as any, nullable: true })
+  updatedAt: Date;
 }

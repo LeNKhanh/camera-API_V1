@@ -18,15 +18,27 @@ export class EventService {
   async create(dto: { cameraId: string; type: any; description?: string }) {
     const cam = await this.camRepo.findOne({ where: { id: dto.cameraId } });
     if (!cam) throw new NotFoundException('Camera not found');
-    // Tạo event gắn với camera
-    const ev = this.eventRepo.create({ camera: cam, type: dto.type, description: dto.description } as any);
+    // Tạo event gắn với camera và lấy channel từ camera
+    const ev = this.eventRepo.create({
+      camera: cam,
+      nChannelID: cam.channel || 1, // Lấy channel từ camera
+      type: dto.type,
+      description: dto.description,
+    } as any);
     return this.eventRepo.save(ev);
   }
 
-  // Danh sách có thể lọc theo camera
-  list(cameraId?: string) {
-    if (cameraId) return this.eventRepo.find({ where: { camera: { id: cameraId } }, relations: ['camera'] });
-    return this.eventRepo.find({ relations: ['camera'] });
+  // Danh sách có thể lọc theo camera và channel
+  list(cameraId?: string, nChannelID?: number) {
+    const where: any = {};
+    if (cameraId) where.camera = { id: cameraId };
+    if (nChannelID !== undefined) where.nChannelID = nChannelID;
+
+    return this.eventRepo.find({
+      where: Object.keys(where).length > 0 ? where : undefined,
+      relations: ['camera'],
+      order: { createdAt: 'DESC' },
+    });
   }
 
   // Chi tiết sự kiện
@@ -46,6 +58,33 @@ export class EventService {
 
   // Giả lập motion: tạo sự kiện MOTION cho camera
   async simulateMotion(cameraId: string, description?: string) {
-    return this.create({ cameraId, type: 'MOTION', description: description || 'Simulated motion' });
+    const cam = await this.camRepo.findOne({ where: { id: cameraId } });
+    if (!cam) throw new NotFoundException('Camera not found');
+    
+    return this.create({
+      cameraId,
+      type: 'MOTION',
+      description: description || `Simulated motion for camera ${cam.name}`,
+    });
+  }
+
+  // Xóa 1 event theo id
+  async deleteOne(id: string) {
+    const existing = await this.eventRepo.findOne({ where: { id } });
+    if (!existing) throw new NotFoundException('Event not found');
+    await this.eventRepo.delete(id);
+    return { ok: true, deletedId: id };
+  }
+
+  // Xóa tất cả event của 1 camera
+  async deleteByCamera(cameraId: string) {
+    const cam = await this.camRepo.findOne({ where: { id: cameraId } });
+    if (!cam) throw new NotFoundException('Camera not found');
+    const res = await this.eventRepo.createQueryBuilder()
+      .delete()
+      .from(Event)
+      .where('camera_id = :cid', { cid: cameraId })
+      .execute();
+    return { ok: true, cameraId, affected: res.affected || 0 };
   }
 }

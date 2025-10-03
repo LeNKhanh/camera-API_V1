@@ -1,5 +1,6 @@
 // Entity Recording: lưu thông tin file ghi, thời lượng, trạng thái
 import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, JoinColumn } from 'typeorm';
+const dateType = process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamptz';
 import { Camera } from './camera.entity';
 
 export type RecordingStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'STOPPED';
@@ -21,10 +22,10 @@ export class Recording {
   @Column({ name: 'duration_sec', type: 'int' })
   durationSec: number;
 
-  @Column({ name: 'started_at', type: 'timestamptz' })
+  @Column({ name: 'started_at', type: dateType as any })
   startedAt: Date;
 
-  @Column({ name: 'ended_at', type: 'timestamptz', nullable: true })
+  @Column({ name: 'ended_at', type: dateType as any, nullable: true })
   endedAt?: Date | null;
 
   // Mặc định PENDING khi mới tạo, service sẽ chuyển RUNNING/COMPLETED
@@ -38,6 +39,6 @@ export class Recording {
   @Column({ name: 'strategy', type: 'varchar', length: 20, default: 'RTSP' })
   strategy: string;
 
-  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: dateType as any })
   createdAt: Date;
 }

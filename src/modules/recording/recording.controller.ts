@@ -1,7 +1,7 @@
 // RecordingController: Điều khiển các API ghi hình
 // Luồng:
 // - POST /recordings/start: bắt đầu ghi trong X giây từ cameraId
-// - GET /recordings?cameraId=: liệt kê theo camera hoặc tất cả
+// - GET /recordings?cameraId=&status=&from=&to=: liệt kê theo camera, status, time range hoặc tất cả
 // - GET /recordings/:id: xem chi tiết/trạng thái
 import { Body, Controller, Get, Param, Post, Query, UseGuards, Put, Res } from '@nestjs/common';
 import { Response } from 'express';
@@ -49,10 +49,11 @@ export class RecordingController {
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
   list(
     @Query('cameraId') cameraId?: string,
+    @Query('status') status?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.svc.listRecordingsFiltered({ cameraId, from, to });
+    return this.svc.listRecordingsFiltered({ cameraId, status, from, to });
   }
 
   // Trạng thái / chi tiết bản ghi

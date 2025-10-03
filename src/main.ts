@@ -1,5 +1,6 @@
 // Entry point: khởi động NestJS, bật CORS, cookie-parser, và ValidationPipe
 import { ValidationPipe } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
@@ -20,6 +21,18 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
+
+  // 5) Swagger (có thể tắt qua ENV DISABLE_SWAGGER=1)
+  if (process.env.DISABLE_SWAGGER !== '1') {
+    const config = new DocumentBuilder()
+      .setTitle('Camera API (Dahua-only)')
+      .setDescription('REST API quản lý camera Dahua, snapshot, recording, event, PTZ')
+      .setVersion('1.0.0')
+      .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'JWT')
+      .build();
+    const doc = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('docs', app, doc, { swaggerOptions: { persistAuthorization: true } });
+  }
 
   const preferredPort = parseInt(process.env.PORT || '3000', 10);
   const autoPort = process.env.AUTO_PORT === '1';

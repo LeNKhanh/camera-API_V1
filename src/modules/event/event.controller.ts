@@ -3,7 +3,7 @@
 // - POST /events: tạo sự kiện gắn với camera
 // - GET /events?cameraId=: liệt kê theo camera hoặc tất cả
 // - GET /events/:id: chi tiết
-import { Body, Controller, Get, Param, Post, Query, UseGuards, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards, Put, Delete } from '@nestjs/common';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 
 import { Roles } from '../../common/roles.decorator';
@@ -39,8 +39,12 @@ export class EventController {
   // Danh sách
   @Get()
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
-  list(@Query('cameraId') cameraId?: string) {
-    return this.svc.list(cameraId);
+  list(
+    @Query('cameraId') cameraId?: string,
+    @Query('nChannelID') nChannelID?: string,
+  ) {
+    const channelNum = nChannelID ? parseInt(nChannelID, 10) : undefined;
+    return this.svc.list(cameraId, channelNum);
   }
 
   // Chi tiết
@@ -62,5 +66,19 @@ export class EventController {
   @Roles('ADMIN','OPERATOR')
   simulate(@Param('cameraId') cameraId: string) {
     return this.svc.simulateMotion(cameraId);
+  }
+
+  // Xóa 1 event theo id
+  @Delete(':id')
+  @Roles('ADMIN','OPERATOR')
+  remove(@Param('id') id: string) {
+    return this.svc.deleteOne(id);
+  }
+
+  // Xóa tất cả event của 1 camera
+  @Delete('/by-camera/:cameraId')
+  @Roles('ADMIN','OPERATOR')
+  removeByCamera(@Param('cameraId') cameraId: string) {
+    return this.svc.deleteByCamera(cameraId);
   }
 }

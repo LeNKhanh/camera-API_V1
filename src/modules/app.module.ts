@@ -11,6 +11,7 @@ import { RecordingModule } from './recording/recording.module';
 import { EventModule } from './event/event.module';
 import { SnapshotModule } from './snapshot/snapshot.module';
 import { PtzModule } from './ptz/ptz.module';
+import { PlaybackModule } from './playback/playback.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RolesGuard } from '../common/roles.guard';
@@ -22,23 +23,39 @@ import { Recording } from '../typeorm/entities/recording.entity';
 import { Event } from '../typeorm/entities/event.entity';
 import { Snapshot } from '../typeorm/entities/snapshot.entity';
 import { PtzLog } from '../typeorm/entities/ptz-log.entity';
+import { Playback } from '../typeorm/entities/playback.entity';
 
 @Module({
   imports: [
-  // 1) Module cấu hình: nạp biến môi trường .env
+    // 1) Module cấu hình: nạp biến môi trường .env
     ConfigModule.forRoot({ isGlobal: true }),
 
-  // 2) Kết nối DB Postgres qua TypeORM (DB_NAME mặc định: Camera_api)
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      username: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'Camera_api',
-  entities: [User, Camera, Recording, Event, Snapshot, PtzLog],
-      synchronize: true, // Dev: tự sync schema; Prod: nên dùng migration
-      logging: ['error', 'warn'],
+    // 2) Kết nối DB: dùng SQLite in-memory khi NODE_ENV=test, ngược lại Postgres
+    TypeOrmModule.forRootAsync({
+      useFactory: () => {
+        const isTest = process.env.NODE_ENV === 'test';
+        if (isTest) {
+          return {
+            type: 'sqlite' as const,
+            database: ':memory:',
+            dropSchema: true,
+            entities: [User, Camera, Recording, Event, Snapshot, PtzLog, Playback],
+            synchronize: true,
+            logging: false,
+          };
+        }
+        return {
+          type: 'postgres' as const,
+          host: process.env.DB_HOST || 'localhost',
+          port: parseInt(process.env.DB_PORT || '5432', 10),
+          username: process.env.DB_USER || 'postgres',
+          password: process.env.DB_PASSWORD || 'postgres',
+          database: process.env.DB_NAME || 'Camera_api',
+          entities: [User, Camera, Recording, Event, Snapshot, PtzLog, Playback],
+          synchronize: false, // Dùng migrations thay vì sync tự động (tránh xung đột đổi cột PTZ)
+          logging: ['error', 'warn'],
+        };
+      },
     }),
 
     // 3) Các module nghiệp vụ
@@ -49,6 +66,7 @@ import { PtzLog } from '../typeorm/entities/ptz-log.entity';
     EventModule,
     SnapshotModule,
     PtzModule,
+    PlaybackModule,
   ],
   controllers: [AppController],
   providers: [

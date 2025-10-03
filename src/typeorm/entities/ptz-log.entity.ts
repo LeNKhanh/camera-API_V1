@@ -8,9 +8,13 @@ export class PtzLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // Thay vì foreign key trực tiếp -> lưu thông tin handle đăng nhập SDK & channel
-  // ILoginID: định danh phiên đăng nhập (có thể ánh xạ camera.id hoặc handle thật trong tương lai)
-  @Column({ name: 'ILoginID', type: 'varchar', length: 64 })
+  // Foreign key relation to Camera (cascade delete)
+  @ManyToOne(() => Camera, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'ILoginID' })
+  camera: Camera;
+
+  // ILoginID: định danh camera (camera.id) - giờ đã có FK constraint
+  @Column({ name: 'ILoginID', type: 'uuid' })
   ILoginID: string;
 
   // nChannelID: channel của camera tại thời điểm ghi log
