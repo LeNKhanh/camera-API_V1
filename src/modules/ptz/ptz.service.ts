@@ -1,12 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Camera } from '../../typeorm/entities/camera.entity';
 import { PtzLog } from '../../typeorm/entities/ptz-log.entity';
+import axios from 'axios';
+import { DigestClient } from 'digest-fetch';
 
 // Runtime enum object (dùng cho class-validator IsEnum)
 // Thêm phần mở rộng .js để tránh lỗi khi chạy trong môi trường Node CommonJS sau build.
-import { StandardPtzActionCodes } from './ptz-command-map';
+import { StandardPtzActionCodes, DahuaPtzCommandNames } from './ptz-command-map';
+import { OnvifPtzHelper } from './onvif-ptz.helper';
 
 export const PtzActions = {
   PAN_LEFT: 'PAN_LEFT',
@@ -74,12 +77,14 @@ interface ActiveMove {
 
 @Injectable()
 export class PtzService {
+  private readonly logger = new Logger(PtzService.name);
   private active = new Map<string, ActiveMove>();
   // Throttle: lưu timestamp lệnh cuối theo cameraId
   private lastCommandAt = new Map<string, number>();
   private throttleMs = 200; // tối thiểu 200ms giữa 2 lệnh (có thể override qua ENV PTZ_THROTTLE_MS)
   private debugThrottle = false; // PTZ_THROTTLE_DEBUG=1 để trả thêm lastDeltaMs
   private maxLogsPerCamera = 10; // giữ tối đa 10 log gần nhất mỗi camera (PTZ_LOG_MAX override)
+  private useOnvif = true; // PTZ_USE_ONVIF=0 để tắt ONVIF và dùng mock mode
 
   constructor(
     @InjectRepository(Camera) private readonly camRepo: Repository<Camera>,
@@ -95,6 +100,7 @@ export class PtzService {
       if (v >= 0 && v <= 10000) this.throttleMs = v; // giới hạn an toàn
     }
     this.debugThrottle = process.env.PTZ_THROTTLE_DEBUG === '1';
+    this.useOnvif = process.env.PTZ_USE_ONVIF !== '0'; // Mặc định bật ONVIF
     const maxEnv = process.env.PTZ_LOG_MAX;
     if (maxEnv && !isNaN(Number(maxEnv))) {
       const mv = parseInt(maxEnv, 10);
@@ -146,6 +152,34 @@ export class PtzService {
     }
     this.lastCommandAt.set(cameraId, now);
 
+    // === DEBUG LOGGING START ===
+    console.log('┌─────────────────────────────────────────────────────────────');
+    console.log('│ [PTZ DEBUG] Camera Info:');
+    console.log('│   - ID:', cam.id);
+    console.log('│   - Name:', cam.name);
+    console.log('│   - IP Address:', cam.ipAddress);
+    console.log('│   - SDK Port:', cam.sdkPort);
+    console.log('│   - ONVIF Port:', cam.onvifPort || 80);
+    console.log('│   - Channel:', cam.channel);
+    console.log('│   - Vendor:', cam.vendor);
+    console.log('│   - Username:', cam.username);
+    console.log('│ [PTZ DEBUG] Command:');
+    console.log('│   - Action:', action);
+    console.log('│   - Speed:', speed);
+    console.log('│   - Duration (ms):', durationMs || 'unlimited');
+    console.log('│   - Command Code:', commandCodeMap[action]);
+    console.log('│ [PTZ DEBUG] Mode:', this.useOnvif ? '✅ ONVIF ENABLED' : '⚠️  MOCK MODE (ONVIF DISABLED)');
+    if (this.useOnvif) {
+      console.log('│   📡 Sẽ gửi lệnh ONVIF thật tới camera');
+      console.log('│   🎥 Camera sẽ di chuyển vật lý!');
+    } else {
+      console.log('│   ⚠️  IMPORTANT: Code chỉ giả lập (mock)');
+      console.log('│   ⚠️  Camera sẽ KHÔNG di chuyển thực tế!');
+      console.log('│   💡 Set PTZ_USE_ONVIF=1 để bật ONVIF');
+    }
+    console.log('└─────────────────────────────────────────────────────────────');
+    // === DEBUG LOGGING END ===
+
     // Param mapping theo bảng vendor: (đơn giản hoá)
     // - Up/Down dùng vertical speed param2 (1..8)
     // - Left/Right dùng horizontal speed param2 (1..8)
@@ -196,6 +230,14 @@ export class PtzService {
     if (typeof p2 === 'number') param2 = p2;
     if (typeof p3 === 'number') param3 = p3;
 
+    // === DEBUG PARAMS ===
+    console.log('│ [PTZ DEBUG] Parameters:');
+    console.log('│   - Normalized Speed:', normSpeed);
+    console.log('│   - param1 (vertical speed):', param1);
+    console.log('│   - param2 (horizontal speed / preset):', param2);
+    console.log('│   - param3:', param3);
+    // === DEBUG PARAMS END ===
+
     // Mapping speed -> vector pan/tilt/zoom (-1..1 * speed)
     let vectorPan = 0, vectorTilt = 0, vectorZoom = 0;
     switch (action) {
@@ -220,10 +262,39 @@ export class PtzService {
         break;
     }
 
+    // === DEBUG VECTORS ===
+    console.log('│ [PTZ DEBUG] Motion Vectors:');
+    console.log('│   - Pan (X-axis):', vectorPan);
+    console.log('│   - Tilt (Y-axis):', vectorTilt);
+    console.log('│   - Zoom (Z-axis):', vectorZoom);
+    // === DEBUG VECTORS END ===
+
     if (action === 'STOP') {
       const prev = this.active.get(cameraId);
       if (prev?.timeout) clearTimeout(prev.timeout);
       this.active.delete(cameraId);
+
+      // === ONVIF STOP ===
+      if (this.useOnvif) {
+        try {
+          console.log('│ [PTZ ONVIF] Calling STOP...');
+          const onvifCam = await OnvifPtzHelper.connect(
+            cam.ipAddress,
+            cam.onvifPort || 80,
+            cam.username,
+            cam.password,
+            cameraId
+          );
+          await OnvifPtzHelper.stop(onvifCam);
+          console.log('│ [PTZ ONVIF] ✅ STOP command sent successfully');
+        } catch (error) {
+          this.logger.error(`[PTZ ONVIF] STOP failed: ${error.message}`);
+          console.log('│ [PTZ ONVIF] ❌ STOP failed:', error.message);
+        }
+      }
+      console.log('└─────────────────────────────────────────────────────────────');
+      // === ONVIF STOP END ===
+
       // Log STOP
       await this.logRepo.save(this.logRepo.create({
         ILoginID: ILoginID, // tạm dùng camera.id làm handle
@@ -249,13 +320,147 @@ export class PtzService {
     const startedAt = Date.now();
     const record: ActiveMove = { action, startedAt };
     if (durationMs && durationMs > 0) {
-      record.timeout = setTimeout(() => {
+      record.timeout = setTimeout(async () => {
         this.active.delete(cameraId);
+        // Auto-stop sau duration
+        if (this.useOnvif) {
+          try {
+            const onvifCam = await OnvifPtzHelper.connect(
+              cam.ipAddress,
+              cam.onvifPort || 80,
+              cam.username,
+              cam.password,
+              cameraId
+            );
+            await OnvifPtzHelper.stop(onvifCam);
+            this.logger.debug(`[PTZ ONVIF] Auto-stop after ${durationMs}ms`);
+          } catch (error) {
+            this.logger.error(`[PTZ ONVIF] Auto-stop failed: ${error.message}`);
+          }
+        }
       }, durationMs);
     }
     this.active.set(cameraId, record);
 
-    // Trả về giả lập (sau này có thể gọi ONVIF SDK thật)
+    // === ONVIF PTZ CONTROL ===
+    if (this.useOnvif) {
+      try {
+        console.log('│ [PTZ ONVIF] Connecting to camera...');
+        const onvifCam = await OnvifPtzHelper.connect(
+          cam.ipAddress,
+          cam.onvifPort || 80,
+          cam.username,
+          cam.password,
+          cameraId
+        );
+        
+        console.log('│ [PTZ ONVIF] Sending PTZ command (SmartMove - auto fallback)...');
+        
+        // Normalize vectors to -1..1 range (ONVIF standard)
+        const normalizeSpeed = (v: number) => Math.max(-1, Math.min(1, v / 10));
+        const panNorm = normalizeSpeed(vectorPan);
+        const tiltNorm = normalizeSpeed(vectorTilt);
+        const zoomNorm = normalizeSpeed(vectorZoom);
+        
+        console.log('│ [PTZ ONVIF] Normalized speeds:', { pan: panNorm, tilt: tiltNorm, zoom: zoomNorm });
+        
+        // Handle preset commands
+        if (action === 'PRESET_GOTO' && param2) {
+          await OnvifPtzHelper.gotoPreset(onvifCam, String(param2));
+          console.log('│ [PTZ ONVIF] ✅ GotoPreset command sent');
+        } else if (action === 'PRESET_SET') {
+          const presetToken = await OnvifPtzHelper.setPreset(onvifCam, `Preset${param2 || 1}`, String(param2 || 1));
+          console.log('│ [PTZ ONVIF] ✅ SetPreset command sent, token:', presetToken);
+        } else if (action === 'PRESET_DELETE' && param2) {
+          await OnvifPtzHelper.removePreset(onvifCam, String(param2));
+          console.log('│ [PTZ ONVIF] ✅ RemovePreset command sent');
+        } else {
+          // Smart movement (auto-detect capabilities and fallback)
+          await OnvifPtzHelper.smartMove(onvifCam, cameraId, panNorm, tiltNorm, zoomNorm);
+          console.log('│ [PTZ ONVIF] ✅ PTZ command sent successfully');
+        }
+        
+        console.log('└─────────────────────────────────────────────────────────────');
+      } catch (error) {
+        this.logger.error(`[PTZ ONVIF] Command failed: ${error.message}`, error.stack);
+        console.log('│ [PTZ ONVIF] Command failed:', error.message);
+        console.log('└─────────────────────────────────────────────────────────────');
+        // Continue to log even if ONVIF fails
+      }
+    } else {
+      // === DAHUA HTTP API (Real PTZ Control) ===
+      console.log('│ [PTZ DEBUG] SDK Call:');
+      console.log('│   ONVIF DISABLED - Using Dahua HTTP API');
+      console.log('│   Camera WILL move physically!');
+      
+      try {
+        // Dahua API uses the SAME channel number as camera (no conversion needed)
+        // Camera channel 2 = API channel=2 (NOT 0-based!)
+        const channelIndex = nChannelID;
+        
+        // Get Dahua command name (e.g., "Left", "Right", "Up", "Down")
+        const dahuaCommand = DahuaPtzCommandNames[action] || action;
+        
+        // Build Dahua PTZ HTTP URL
+        // Format: /cgi-bin/ptz.cgi?action=start&channel=2&code=Left&arg1=0&arg2=5&arg3=0
+        const ptzUrl = `http://${cam.ipAddress}/cgi-bin/ptz.cgi?action=start&channel=${channelIndex}&code=${dahuaCommand}&arg1=${param1 || 0}&arg2=${param2 || 0}&arg3=${param3 || 0}`;
+        
+        console.log('│   HTTP URL:', ptzUrl);
+        console.log('│   Auth:', `${cam.username}:****`);
+        console.log('│   Channel:', `${nChannelID} (API uses same channel number)`);
+        console.log('│   Command:', `${action} -> ${dahuaCommand}`);
+        
+        // Use Digest authentication for Dahua cameras
+        const digestClient = new DigestClient(cam.username, cam.password);
+        const response = await digestClient.fetch(ptzUrl, {
+          method: 'GET',
+        });
+        
+        if (response.ok) {
+          const responseText = await response.text();
+          console.log('│   PTZ Command sent successfully!');
+          console.log('│   Response status:', response.status);
+          console.log('│   Response:', responseText.substring(0, 100));
+          
+          // Auto-stop after duration (if specified)
+          if (durationMs) {
+            this.logger.debug(`[PTZ HTTP] Auto-stop after ${durationMs}ms`);
+            setTimeout(async () => {
+              try {
+                const stopUrl = `http://${cam.ipAddress}/cgi-bin/ptz.cgi?action=stop&channel=${channelIndex}&code=${dahuaCommand}&arg1=0&arg2=0&arg3=0`;
+                const stopResponse = await digestClient.fetch(stopUrl, { method: 'GET' });
+                if (stopResponse.ok) {
+                  console.log('│   Auto-stop sent successfully');
+                }
+              } catch (stopErr) {
+                this.logger.warn(`[PTZ HTTP] Auto-stop failed: ${stopErr.message}`);
+              }
+            }, durationMs);
+          }
+        } else {
+          const errorText = await response.text();
+          console.log('│   ❌ HTTP error response:', errorText.substring(0, 200));
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+      } catch (error) {
+        console.log('│   ❌ HTTP API call failed:', error.message);
+        this.logger.error(`[PTZ HTTP] Failed: ${error.message}`);
+        
+        if (error.response) {
+          console.log('│   📊 Response status:', error.response.status);
+          console.log('│   📄 Response data:', error.response.data);
+        } else if (error.code === 'ECONNREFUSED') {
+          console.log('│   ⚠️  Connection refused - check camera IP/port');
+        } else if (error.code === 'ETIMEDOUT') {
+          console.log('│   ⚠️  Timeout - camera not responding');
+        }
+      }
+      
+      console.log('└─────────────────────────────────────────────────────────────');
+    }
+    // === ONVIF PTZ CONTROL END ===
+
     // Ghi log
     await this.logRepo.save(this.logRepo.create({
       ILoginID,
@@ -271,6 +476,8 @@ export class PtzService {
     }));
     // Prune async (không chặn response)
     this.pruneLogs(cameraId).catch(() => {/* ignore prune errors */});
+
+    console.log(this.useOnvif ? '✅ [PTZ ONVIF] Command executed' : '✅ [PTZ DEBUG] Mock response returned');
 
     return {
       ok: true,

@@ -1,0 +1,130 @@
+@startuml Camera_API_Component_Diagram
+
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+!define DEVICONS https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/devicons
+!define FONTAWESOME https://raw.githubusercontent.com/tupadr3/plantuml-icon-font-sprites/master/font-awesome-5
+!include DEVICONS/react.puml
+!include DEVICONS/postgresql.puml
+!include DEVICONS/nodejs.puml
+!include FONTAWESOME/camera.puml
+
+title Component Diagram - Camera API System
+
+Person(client, "API Client", "Web/Mobile/Testing Tools", $sprite="react")
+
+System_Boundary(api, "Camera API System") {
+    
+    Container_Boundary(auth, "Authentication Module") {
+        Component(authCtrl, "AuthController", "NestJS Controller", "Handles authentication requests")
+        Component(authSvc, "AuthService", "Service", "JWT generation & validation")
+        Component(jwtStrategy, "JWT Strategy", "Passport", "Token verification")
+    }
+    
+    Container_Boundary(camera, "Camera Module") {
+        Component(cameraCtrl, "CameraController", "NestJS Controller", "CRUD operations")
+        Component(cameraSvc, "CameraService", "Service", "Business logic")
+        Component(cameraRepo, "CameraRepository", "TypeORM", "Data access")
+    }
+    
+    Container_Boundary(ptz, "PTZ Module") {
+        Component(ptzCtrl, "PTZController", "NestJS Controller", "PTZ command endpoint")
+        Component(ptzSvc, "PTZService", "Service", "PTZ control logic")
+        Component(ptzRepo, "PTZLogRepository", "TypeORM", "Log storage")
+        Component(digestFetch, "DigestClient", "digest-fetch", "Digest authentication")
+        Component(commandMap, "PTZ Command Map", "Utility", "Action → Dahua command")
+    }
+    
+    Container_Boundary(stream, "Stream Module") {
+        Component(streamCtrl, "StreamController", "NestJS Controller", "RTSP URL generation")
+        Component(streamSvc, "StreamService", "Service", "Stream URL builder")
+    }
+    
+    Container_Boundary(recording, "Recording Module") {
+        Component(recordingCtrl, "RecordingController", "NestJS Controller", "Recording management")
+        Component(recordingSvc, "RecordingService", "Service", "Recording logic")
+        Component(recordingRepo, "RecordingRepository", "TypeORM", "Recording data")
+    }
+    
+    Container_Boundary(snapshot, "Snapshot Module") {
+        Component(snapshotCtrl, "SnapshotController", "NestJS Controller", "Snapshot capture")
+        Component(snapshotSvc, "SnapshotService", "Service", "Image capture logic")
+        Component(snapshotRepo, "SnapshotRepository", "TypeORM", "Snapshot metadata")
+    }
+    
+    Container_Boundary(event, "Event Module") {
+        Component(eventCtrl, "EventController", "NestJS Controller", "Event management")
+        Component(eventSvc, "EventService", "Service", "Event processing")
+        Component(eventRepo, "EventRepository", "TypeORM", "Event storage")
+    }
+    
+    Container_Boundary(playback, "Playback Module") {
+        Component(playbackCtrl, "PlaybackController", "NestJS Controller", "Playback sessions")
+        Component(playbackSvc, "PlaybackService", "Service", "Playback logic")
+        Component(playbackRepo, "PlaybackRepository", "TypeORM", "Session data")
+    }
+}
+
+ContainerDb(db, "PostgreSQL Database", "PostgreSQL 14", "Stores all application data", $sprite="postgresql")
+
+System_Ext(dahuaCamera, "Dahua Camera", "IPC-HDBW2431R-ZS\n192.168.1.66", $sprite="camera")
+
+' Relationships - Client to Controllers
+Rel(client, authCtrl, "POST /auth/login", "HTTPS/JSON")
+Rel(client, cameraCtrl, "CRUD /cameras", "HTTPS/JSON")
+Rel(client, ptzCtrl, "POST /cameras/:id/ptz", "HTTPS/JSON")
+Rel(client, streamCtrl, "GET /streams/:id/url", "HTTPS/JSON")
+Rel(client, recordingCtrl, "CRUD /recordings", "HTTPS/JSON")
+Rel(client, snapshotCtrl, "POST /snapshots/capture", "HTTPS/JSON")
+Rel(client, eventCtrl, "CRUD /events", "HTTPS/JSON")
+Rel(client, playbackCtrl, "CRUD /playbacks", "HTTPS/JSON")
+
+' Auth Module
+Rel(authCtrl, authSvc, "Uses")
+Rel(authCtrl, jwtStrategy, "Validates via")
+Rel(authSvc, cameraRepo, "Queries users")
+
+' Camera Module
+Rel(cameraCtrl, cameraSvc, "Uses")
+Rel(cameraSvc, cameraRepo, "Uses")
+Rel(cameraRepo, db, "Reads/Writes", "TypeORM")
+
+' PTZ Module
+Rel(ptzCtrl, ptzSvc, "Uses")
+Rel(ptzSvc, cameraRepo, "Gets camera info")
+Rel(ptzSvc, ptzRepo, "Logs actions")
+Rel(ptzSvc, commandMap, "Maps commands")
+Rel(ptzSvc, digestFetch, "Authenticates via")
+Rel(digestFetch, dahuaCamera, "HTTP CGI API", "Digest Auth")
+Rel(ptzRepo, db, "Writes logs", "TypeORM")
+
+' Stream Module
+Rel(streamCtrl, streamSvc, "Uses")
+Rel(streamSvc, cameraRepo, "Gets camera info")
+Rel(streamSvc, dahuaCamera, "RTSP URL", "rtsp://")
+
+' Recording Module
+Rel(recordingCtrl, recordingSvc, "Uses")
+Rel(recordingSvc, recordingRepo, "Uses")
+Rel(recordingSvc, dahuaCamera, "Records from", "RTSP")
+Rel(recordingRepo, db, "Reads/Writes", "TypeORM")
+
+' Snapshot Module
+Rel(snapshotCtrl, snapshotSvc, "Uses")
+Rel(snapshotSvc, snapshotRepo, "Uses")
+Rel(snapshotSvc, dahuaCamera, "Captures from", "HTTP CGI")
+Rel(snapshotRepo, db, "Reads/Writes", "TypeORM")
+
+' Event Module
+Rel(eventCtrl, eventSvc, "Uses")
+Rel(eventSvc, eventRepo, "Uses")
+Rel(eventRepo, db, "Reads/Writes", "TypeORM")
+
+' Playback Module
+Rel(playbackCtrl, playbackSvc, "Uses")
+Rel(playbackSvc, playbackRepo, "Uses")
+Rel(playbackRepo, db, "Reads/Writes", "TypeORM")
+
+SHOW_LEGEND()
+
+@enduml

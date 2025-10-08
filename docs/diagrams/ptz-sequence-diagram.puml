@@ -1,0 +1,165 @@
+@startuml PTZ_Control_Flow_Detailed
+
+skinparam sequence {
+    ArrowColor Black
+    ActorBorderColor Black
+    LifeLineBorderColor Black
+    LifeLineBackgroundColor LightGray
+    
+    ParticipantBorderColor Black
+    ParticipantBackgroundColor LightYellow
+    
+    BoxBorderColor Black
+}
+
+title PTZ Control Flow - Detailed Sequence
+
+actor "Client\n(Hoppscotch)" as Client
+participant "PTZController" as Controller
+participant "PTZService" as Service
+participant "CameraRepository" as CameraRepo
+database "PostgreSQL" as DB
+participant "DigestClient" as Digest
+participant "Dahua Camera\n192.168.1.66" as Camera
+
+== 1. Request PTZ Command ==
+
+Client -> Controller: POST /cameras/:id/ptz\n{\n  "action": "PAN_LEFT",\n  "speed": 5,\n  "duration": 2000\n}
+activate Controller
+
+Controller -> Controller: Validate JWT Token
+Controller -> Controller: Validate DTO
+
+Controller -> Service: sendCommand(cameraId, dto)
+activate Service
+
+== 2. Get Camera Information ==
+
+Service -> CameraRepo: findOne(cameraId)
+activate CameraRepo
+
+CameraRepo -> DB: SELECT * FROM cameras\nWHERE id = :id
+activate DB
+DB --> CameraRepo: Camera Data
+deactivate DB
+
+CameraRepo --> Service: {\n  ipAddress: "192.168.1.66",\n  username: "aidev",\n  password: "aidev123",\n  channel: 2,\n  sdkPort: 37777,\n  onvifPort: 80\n}
+deactivate CameraRepo
+
+== 3. Check PTZ Mode ==
+
+Service -> Service: useOnvif = process.env.PTZ_USE_ONVIF === '1'
+
+alt ONVIF Mode (Disabled)
+    Service -> Service: ❌ Skip ONVIF\n(PTZ_USE_ONVIF = 0)
+else HTTP API Mode (Active)
+    Service -> Service: ✅ Use Dahua HTTP API
+end
+
+== 4. Map PTZ Command ==
+
+Service -> Service: Map action to Dahua command
+note right
+  DahuaPtzCommandNames = {
+    'PAN_LEFT': 'Left',
+    'PAN_RIGHT': 'Right',
+    'TILT_UP': 'Up',
+    'TILT_DOWN': 'Down',
+    'ZOOM_IN': 'ZoomTele',
+    'ZOOM_OUT': 'ZoomWide'
+  }
+  
+  Result: "PAN_LEFT" → "Left"
+end note
+
+== 5. Build HTTP URL ==
+
+Service -> Service: Build PTZ URL
+note right
+  URL Format:
+  http://{ip}/cgi-bin/ptz.cgi?
+    action=start
+    &channel={channel}
+    &code={command}
+    &arg1=0
+    &arg2={speed}
+    &arg3=0
+  
+  Built URL:
+  http://192.168.1.66/cgi-bin/ptz.cgi?
+    action=start&channel=2&code=Left
+    &arg1=0&arg2=5&arg3=0
+end note
+
+== 6. Send HTTP Request ==
+
+Service -> Digest: new DigestClient(username, password)
+activate Digest
+
+Service -> Digest: fetch(url, { method: 'GET' })
+
+Digest -> Camera: GET /cgi-bin/ptz.cgi?...\n(Without Authorization)
+activate Camera
+
+Camera --> Digest: 401 Unauthorized\nWWW-Authenticate: Digest\n  realm="...",\n  nonce="...",\n  qop="auth"
+
+Digest -> Digest: Calculate Digest Hash\nHA1 = MD5(user:realm:pass)\nHA2 = MD5(method:uri)\nresponse = MD5(HA1:nonce:HA2)
+
+Digest -> Camera: GET /cgi-bin/ptz.cgi?...\nAuthorization: Digest\n  username="aidev",\n  response="...",\n  nonce="..."
+
+Camera -> Camera: Validate Digest Auth
+Camera -> Camera: Execute PTZ Command
+Camera -> Camera: 🎥 Motor moves LEFT!
+
+Camera --> Digest: 200 OK\nContent: "OK"
+deactivate Camera
+
+Digest --> Service: Response { ok: true, text: "OK" }
+deactivate Digest
+
+== 7. Schedule Auto-Stop ==
+
+Service -> Service: setTimeout(stopCommand, 2000ms)
+note right
+  After 2 seconds, send:
+  
+  http://192.168.1.66/cgi-bin/ptz.cgi?
+    action=stop&channel=2&code=Left
+    &arg1=0&arg2=0&arg3=0
+end note
+
+== 8. Log PTZ Action ==
+
+Service -> DB: INSERT INTO ptz_logs\n(camera_id, action, speed,\n duration, status, timestamp)
+activate DB
+DB --> Service: Log saved
+deactivate DB
+
+== 9. Return Response ==
+
+Service --> Controller: {\n  ok: true,\n  action: "PAN_LEFT",\n  speed: 5,\n  willAutoStopAfterMs: 2000\n}
+deactivate Service
+
+Controller --> Client: 200 OK\n{\n  "ok": true,\n  "action": "PAN_LEFT",\n  "speed": 5,\n  "willAutoStopAfterMs": 2000\n}
+deactivate Controller
+
+== 10. Auto-Stop (After 2 seconds) ==
+
+... 2000 ms later ...
+
+Service -> Digest: fetch(stopUrl)
+activate Digest
+Digest -> Camera: GET /cgi-bin/ptz.cgi?action=stop...
+activate Camera
+Camera -> Camera: 🛑 Motor STOPS!
+Camera --> Digest: 200 OK
+deactivate Camera
+Digest --> Service: Stopped
+deactivate Digest
+
+note over Client, Camera
+  **Total Process Time: ~2 seconds**
+  Camera physically moved LEFT for 2 seconds, then stopped automatically.
+end note
+
+@enduml

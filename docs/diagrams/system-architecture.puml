@@ -1,0 +1,266 @@
+@startuml Camera_API_System_Architecture
+
+!define RECTANGLE class
+
+skinparam rectangle {
+    BackgroundColor<<client>> LightBlue
+    BackgroundColor<<gateway>> LightGreen
+    BackgroundColor<<controller>> LightYellow
+    BackgroundColor<<service>> LightCoral
+    BackgroundColor<<repository>> LightGray
+    BackgroundColor<<database>> LightPink
+    BackgroundColor<<external>> LightCyan
+}
+
+skinparam arrow {
+    Color Black
+    Thickness 2
+}
+
+title Camera API System - Block Diagram
+
+' ==================== CLIENT LAYER ====================
+package "Client Layer" <<client>> {
+    rectangle "Web Client\n(React/Vue)" as WebClient
+    rectangle "Mobile App\n(Flutter)" as MobileApp
+    rectangle "API Testing\n(Hoppscotch/Postman)" as APITesting
+}
+
+' ==================== API GATEWAY ====================
+package "API Gateway Layer" <<gateway>> {
+    rectangle "JWT Authentication\nMiddleware" as JWTAuth {
+        + Token Validation
+        + User Authorization
+        + Role-based Access
+    }
+}
+
+' ==================== CONTROLLER LAYER ====================
+package "Controller Layer (NestJS)" <<controller>> {
+    rectangle "AuthController" as AuthCtrl
+    rectangle "CameraController" as CameraCtrl
+    rectangle "PTZController" as PTZCtrl
+    rectangle "StreamController" as StreamCtrl
+    rectangle "RecordingController" as RecordingCtrl
+    rectangle "SnapshotController" as SnapshotCtrl
+    rectangle "EventController" as EventCtrl
+    rectangle "PlaybackController" as PlaybackCtrl
+}
+
+' ==================== SERVICE LAYER ====================
+package "Service Layer (Business Logic)" <<service>> {
+    rectangle "AuthService" as AuthSvc {
+        + login()
+        + register()
+        + refresh()
+        + logout()
+    }
+    
+    rectangle "CameraService" as CameraSvc {
+        + findAll()
+        + create()
+        + update()
+        + delete()
+        + verifyConnection()
+    }
+    
+    rectangle "PTZService" as PTZSvc {
+        + sendCommand()
+        + getStatus()
+        + getLogs()
+        ---
+        **HTTP API Mode**
+        - Build URL
+        - Digest Auth
+        - Auto-stop
+    }
+    
+    rectangle "StreamService" as StreamSvc {
+        + getStreamUrl()
+        + buildRTSPUrl()
+    }
+    
+    rectangle "RecordingService" as RecordingSvc {
+        + startRecording()
+        + stopRecording()
+        + getRecordings()
+    }
+    
+    rectangle "SnapshotService" as SnapshotSvc {
+        + captureSnapshot()
+        + saveToFileSystem()
+    }
+    
+    rectangle "EventService" as EventSvc {
+        + createEvent()
+        + acknowledgeEvent()
+    }
+    
+    rectangle "PlaybackService" as PlaybackSvc {
+        + createPlayback()
+        + updatePosition()
+    }
+}
+
+' ==================== REPOSITORY LAYER ====================
+package "Repository Layer (TypeORM)" <<repository>> {
+    rectangle "UserRepository" as UserRepo
+    rectangle "CameraRepository" as CameraRepo
+    rectangle "PTZLogRepository" as PTZLogRepo
+    rectangle "RecordingRepository" as RecordingRepo
+    rectangle "SnapshotRepository" as SnapshotRepo
+    rectangle "EventRepository" as EventRepo
+    rectangle "PlaybackRepository" as PlaybackRepo
+}
+
+' ==================== DATABASE LAYER ====================
+database "PostgreSQL Database" <<database>> {
+    rectangle "users" as UsersTable
+    rectangle "cameras" as CamerasTable
+    rectangle "ptz_logs" as PTZLogsTable
+    rectangle "recordings" as RecordingsTable
+    rectangle "snapshots" as SnapshotsTable
+    rectangle "events" as EventsTable
+    rectangle "playbacks" as PlaybacksTable
+}
+
+' ==================== EXTERNAL SERVICES ====================
+package "External Services" <<external>> {
+    rectangle "Dahua Camera\n192.168.1.66" as Camera1 {
+        Model: IPC-HDBW2431R-ZS
+        Channel: 2
+        ---
+        **CGI API Endpoints:**
+        /cgi-bin/ptz.cgi
+        /cgi-bin/snapshot.cgi
+        ---
+        **Protocols:**
+        - HTTP (CGI API)
+        - RTSP (Stream)
+        - Digest Auth
+    }
+    
+    rectangle "Camera 2\n192.168.1.x" as Camera2
+    rectangle "Camera N\n..." as CameraN
+}
+
+' ==================== HELPERS ====================
+package "Helper/Utilities" {
+    rectangle "digest-fetch\n(Digest Auth)" as DigestFetch
+    rectangle "onvif\n(Not Used)" as ONVIFHelper
+    rectangle "PTZ Command Map" as PTZCommandMap
+}
+
+' ==================== CONNECTIONS ====================
+
+' Client to Gateway
+WebClient -down-> JWTAuth : HTTP/HTTPS
+MobileApp -down-> JWTAuth : HTTP/HTTPS
+APITesting -down-> JWTAuth : HTTP/HTTPS
+
+' Gateway to Controllers
+JWTAuth -down-> AuthCtrl
+JWTAuth -down-> CameraCtrl
+JWTAuth -down-> PTZCtrl
+JWTAuth -down-> StreamCtrl
+JWTAuth -down-> RecordingCtrl
+JWTAuth -down-> SnapshotCtrl
+JWTAuth -down-> EventCtrl
+JWTAuth -down-> PlaybackCtrl
+
+' Controllers to Services
+AuthCtrl -down-> AuthSvc
+CameraCtrl -down-> CameraSvc
+PTZCtrl -down-> PTZSvc
+StreamCtrl -down-> StreamSvc
+RecordingCtrl -down-> RecordingSvc
+SnapshotCtrl -down-> SnapshotSvc
+EventCtrl -down-> EventSvc
+PlaybackCtrl -down-> PlaybackSvc
+
+' Services to Repositories
+AuthSvc -down-> UserRepo
+CameraSvc -down-> CameraRepo
+PTZSvc -down-> PTZLogRepo
+PTZSvc ..> CameraRepo : reads camera info
+RecordingSvc -down-> RecordingRepo
+SnapshotSvc -down-> SnapshotRepo
+EventSvc -down-> EventRepo
+PlaybackSvc -down-> PlaybackRepo
+
+' Repositories to Database
+UserRepo -down-> UsersTable
+CameraRepo -down-> CamerasTable
+PTZLogRepo -down-> PTZLogsTable
+RecordingRepo -down-> RecordingsTable
+SnapshotRepo -down-> SnapshotsTable
+EventRepo -down-> EventsTable
+PlaybackRepo -down-> PlaybacksTable
+
+' Services to External
+PTZSvc -right-> DigestFetch : uses
+PTZSvc ..> PTZCommandMap : maps commands
+DigestFetch -down-> Camera1 : HTTP CGI API
+StreamSvc -down-> Camera1 : RTSP
+SnapshotSvc -down-> Camera1 : HTTP CGI
+RecordingSvc -down-> Camera1 : RTSP
+StreamSvc -down-> Camera2 : RTSP
+StreamSvc -down-> CameraN : RTSP
+
+' Database Relationships
+UsersTable -down-> CamerasTable : 1:N
+CamerasTable -down-> PTZLogsTable : 1:N
+CamerasTable -down-> RecordingsTable : 1:N
+CamerasTable -down-> SnapshotsTable : 1:N
+CamerasTable -down-> EventsTable : 1:N
+CamerasTable -down-> PlaybacksTable : 1:N
+
+' Notes
+note right of PTZSvc
+  **PTZ Control Flow:**
+  1. Get camera info
+  2. Check ONVIF mode (disabled)
+  3. Map action → Dahua command
+  4. Build URL with channel=2
+  5. Send HTTP with Digest Auth
+  6. Schedule auto-stop
+  7. Log to database
+end note
+
+note right of Camera1
+  **Current Configuration:**
+  IP: 192.168.1.66
+  User: aidev
+  Pass: aidev123
+  Channel: 2
+  
+  **Working:**
+  ✅ PTZ via HTTP CGI
+  ✅ RTSP Streaming
+  ✅ Snapshot Capture
+  
+  **Not Used:**
+  ❌ ONVIF PTZ
+end note
+
+note bottom of DigestFetch
+  **Digest Authentication**
+  Required by Dahua cameras
+  
+  Request → Challenge → 
+  Hash(user:pass:nonce) → 
+  Response with Authorization
+end note
+
+legend right
+  |= Color |= Layer |
+  | <back:LightBlue> </back> | Client Layer |
+  | <back:LightGreen> </back> | Gateway Layer |
+  | <back:LightYellow> </back> | Controller Layer |
+  | <back:LightCoral> </back> | Service Layer |
+  | <back:LightGray> </back> | Repository Layer |
+  | <back:LightPink> </back> | Database Layer |
+  | <back:LightCyan> </back> | External Services |
+endlegend
+
+@enduml

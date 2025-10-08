@@ -88,3 +88,27 @@ export type StandardPtzAction =
 // Helper: reverse lookup (nếu cần future)
 export const StandardPtzCodeToAction: Record<number, StandardPtzAction> = Object.entries(StandardPtzActionCodes)
   .reduce((acc, [k, v]) => { acc[v] = k as StandardPtzAction; return acc; }, {} as Record<number, StandardPtzAction>);
+
+// Dahua HTTP API command names (used in CGI URL)
+export const DahuaPtzCommandNames: { [k in StandardPtzAction | string]?: string } = {
+  STOP: 'Stop',
+  TILT_UP: 'Up',
+  TILT_DOWN: 'Down',
+  PAN_LEFT: 'Left',
+  PAN_RIGHT: 'Right',
+  PAN_LEFT_UP: 'LeftUp',
+  PAN_RIGHT_UP: 'RightUp',
+  PAN_LEFT_DOWN: 'LeftDown',
+  PAN_RIGHT_DOWN: 'RightDown',
+  ZOOM_IN: 'ZoomWide',
+  ZOOM_OUT: 'ZoomTele',
+  FOCUS_NEAR: 'FocusNear',
+  FOCUS_FAR: 'FocusFar',
+  IRIS_OPEN: 'IrisLarge',
+  IRIS_CLOSE: 'IrisSmall',
+  PRESET_SET: 'GotoPreset',
+  PRESET_DELETE: 'ClearPreset',
+  PRESET_GOTO: 'GotoPreset',
+  AUTO_SCAN_START: 'AutoScanStart',
+  AUTO_SCAN_STOP: 'AutoScanStop',
+} as const;

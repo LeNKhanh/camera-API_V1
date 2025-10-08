@@ -31,6 +31,10 @@ export class Camera {
   @Column({ name: 'sdk_port', type: 'int', nullable: true, default: 37777 })
   sdkPort?: number | null;
 
+  // Cổng ONVIF (default 80). Có thể là 8000, 8080, 8899, v.v. tuỳ camera.
+  @Column({ name: 'onvif_port', type: 'int', nullable: true, default: 80 })
+  onvifPort?: number | null;
+
   @Column({ name: 'onvif_url', type: 'varchar', length: 255, nullable: true })
   onvifUrl?: string | null;
 

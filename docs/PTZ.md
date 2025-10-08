@@ -266,4 +266,74 @@ Nếu client cũ dựa trên danh sách 7 action ban đầu, hãy whitelist ho�
 - Giới hạn concurrency theo camera / session SDK.
 - Thêm filter theo action & khoảng thời gian cho advanced logs.
 - Bổ sung ID cho pattern / tour nếu backend thực sự hỗ trợ.
-
+┌─────────────────────────────────────────────────────────────┐
+│ 1. CLIENT (Hoppscotch)                                      │
+│    POST /cameras/:id/ptz                                    │
+│    Body: { action: "PAN_LEFT", speed: 5, durationMs: 2000 }│
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 2. PTZ CONTROLLER (ptz.controller.ts)                       │
+│    - Validate JWT token                                     │
+│    - Parse body                                             │
+│    - Call service.sendCommand()                             │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 3. PTZ SERVICE (ptz.service.ts)                             │
+│    ┌─────────────────────────────────────────────┐          │
+│    │ 3.1. Get camera from DB                     │          │
+│    │      - IP: 192.168.1.66                     │          │
+│    │      - Username: aidev                      │          │
+│    │      - Password: aidev123                   │          │
+│    │      - Channel: 2                           │          │
+│    └─────────────────────────────────────────────┘          │
+│    ┌─────────────────────────────────────────────┐          │
+│    │ 3.2. Map action to Dahua command            │          │
+│    │      PAN_LEFT → "Left"                      │          │
+│    │      PAN_RIGHT → "Right"                    │          │
+│    │      TILT_UP → "Up"                         │          │
+│    └─────────────────────────────────────────────┘          │
+│    ┌─────────────────────────────────────────────┐          │
+│    │ 3.3. Build URL                              │          │
+│    │  http://192.168.1.66/cgi-bin/ptz.cgi?       │          │
+│    │  action=start&channel=2&code=Left           │          │
+│    │  &arg1=0&arg2=5&arg3=0                      │          │
+│    └─────────────────────────────────────────────┘          │
+│    ┌─────────────────────────────────────────────┐          │
+│    │ 3.4. SEND HTTP REQUEST                      │          │
+│    │  digestFetch.fetch(url)                     │          │
+│    │  - Method: GET                              │          │
+│    │  - Auth: Digest (aidev/aidev123)           │          │
+│    │  - Timeout: 5000ms                          │          │
+│    └─────────────────────────────────────────────┘          │
+│    ┌─────────────────────────────────────────────┐          │
+│    │ 3.5. Schedule auto-stop                     │          │
+│    │  setTimeout(() => {                         │          │
+│    │    send STOP command                        │          │
+│    │  }, 2000)                                   │          │
+│    └─────────────────────────────────────────────┘          │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 4. CAMERA (192.168.1.66)                                    │
+│    - Nhận HTTP request                                      │
+│    - Xác thực Digest Auth                                   │
+│    - Thực thi lệnh PTZ → 🎥 CAMERA DI CHUYỂN!               │
+│    - Response: "OK"                                         │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│ 5. RESPONSE TO CLIENT                                       │
+│    Status: 200                                              │
+│    Body: {                                                  │
+│      ok: true,                                              │
+│      action: "PAN_LEFT",                                    │
+│      speed: 5,                                              │
+│      willAutoStopAfterMs: 2000                              │
+│    }                                                        │
+└─────────────────────────────────────────────────────────────┘

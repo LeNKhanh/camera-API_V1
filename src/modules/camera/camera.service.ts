@@ -29,12 +29,13 @@ export class CameraService {
     const cam: Partial<Camera> = {
       name: dto.name,
       ipAddress: dto.ipAddress,
-      sdkPort: dto.port,
+      sdkPort: dto.sdkPort ?? 37777,
+      onvifPort: dto.onvifPort ?? 80,
       channel,
       username: dto.username,
       password: dto.password,
       rtspPort: dto.rtspPort ?? 554,
-      vendor: 'dahua',
+      vendor: dto.vendor || 'dahua',
       codec: dto.codec || 'H.264',
       resolution: dto.resolution || '1080p',
       enabled: typeof dto.enabled === 'boolean' ? dto.enabled : true,
@@ -53,12 +54,13 @@ export class CameraService {
       const partial: Partial<Camera> = {
         name: `${dto.name || 'Cam'} CH${ch}`,
         ipAddress: dto.ipAddress,
-        sdkPort: dto.port,
+        sdkPort: dto.sdkPort ?? dto.port ?? 37777,
+        onvifPort: dto.onvifPort ?? 80,
         channel: ch,
         username: dto.username,
         password: dto.password,
         rtspPort: dto.rtspPort ?? 554,
-        vendor: 'dahua',
+        vendor: dto.vendor || 'dahua',
         codec: dto.codec || 'H.264',
         resolution: dto.resolution || '1080p',
         enabled: true,
@@ -220,10 +222,11 @@ export class CameraService {
     const cam = await this.findOne(id);
     const rtsp = cam.rtspUrl || `rtsp://${cam.username || 'admin'}:${cam.password || 'admin'}@${cam.ipAddress}:${cam.rtspPort || 554}`;
     const timeoutMs = parseInt(process.env.CAMERA_VERIFY_TIMEOUT_MS || '4000', 10);
+    // Không dùng -stimeout (không có trong ffmpeg cũ), dùng timeout wrapper + rw_timeout
     const args = [
       '-hide_banner',
       '-rtsp_transport', 'tcp',
-      '-stimeout', String(timeoutMs * 1000), // microseconds
+      '-timeout', String(timeoutMs * 1000), // microseconds (connection + read timeout)
       '-i', rtsp,
       '-frames:v', '1',
       '-f', 'null', '-',
@@ -239,7 +242,7 @@ export class CameraService {
           try { child.kill('SIGKILL'); } catch {}
           resolve({ ok: false, status: 'TIMEOUT', rtsp, ms: Date.now() - started });
         }
-      }, timeoutMs);
+      }, timeoutMs + 500); // Thêm 500ms buffer cho ffmpeg tự timeout trước
       child.stderr?.on('data', d => { stderr += d.toString(); });
       child.on('close', (code) => {
         if (resolved) return;
@@ -249,12 +252,12 @@ export class CameraService {
           resolve({ ok: true, status: 'OK', rtsp, ms: Date.now() - started });
         } else {
           const text = stderr.toLowerCase();
-            let reason = 'UNKNOWN';
-            if (/401|unauthorized|auth/.test(text)) reason = 'AUTH';
-            else if (/timed? out|stimeout/.test(text)) reason = 'TIMEOUT';
-            else if (/connection refused|no route to host|network is unreachable|unable to connect|connection timed out/.test(text)) reason = 'CONN';
-            else if (/not found|404/.test(text)) reason = 'NOT_FOUND';
-          resolve({ ok: false, status: reason, rtsp, ms: Date.now() - started, stderr: stderr.slice(0, 300) });
+          let reason = 'UNKNOWN';
+          if (/401|unauthorized|auth/.test(text)) reason = 'AUTH';
+          else if (/timed? out|timeout/.test(text)) reason = 'TIMEOUT';
+          else if (/connection refused|no route to host|network is unreachable|unable to connect|connection timed out/.test(text)) reason = 'CONN';
+          else if (/not found|404/.test(text)) reason = 'NOT_FOUND';
+          resolve({ ok: false, status: reason, rtsp, ms: Date.now() - started, stderr });
         }
       });
     });
