@@ -31,6 +31,7 @@ import { Playback } from '../typeorm/entities/playback.entity';
     ConfigModule.forRoot({ isGlobal: true }),
 
     // 2) Kết nối DB: dùng SQLite in-memory khi NODE_ENV=test, ngược lại Postgres
+    // Ưu tiên DATABASE_URL (từ Coolify Environment Variables)
     TypeOrmModule.forRootAsync({
       useFactory: () => {
         const isTest = process.env.NODE_ENV === 'test';
@@ -44,6 +45,19 @@ import { Playback } from '../typeorm/entities/playback.entity';
             logging: false,
           };
         }
+        
+        // Ưu tiên DATABASE_URL nếu có (Coolify deployment)
+        if (process.env.DATABASE_URL) {
+          return {
+            type: 'postgres' as const,
+            url: process.env.DATABASE_URL,
+            entities: [User, Camera, Recording, Event, Snapshot, PtzLog, Playback],
+            synchronize: false,
+            logging: ['error', 'warn'],
+          };
+        }
+        
+        // Fallback: Local development với các biến riêng lẻ
         return {
           type: 'postgres' as const,
           host: process.env.DB_HOST || 'localhost',
