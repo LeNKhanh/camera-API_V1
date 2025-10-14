@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { Camera } from '../../typeorm/entities/camera.entity';
 import { PtzLog } from '../../typeorm/entities/ptz-log.entity';
 import axios from 'axios';
-import { DigestClient } from 'digest-fetch';
+import { DigestAuthClient } from './digest-auth.helper';
 
 // Runtime enum object (dùng cho class-validator IsEnum)
 // Thêm phần mở rộng .js để tránh lỗi khi chạy trong môi trường Node CommonJS sau build.
@@ -411,7 +411,7 @@ export class PtzService {
         console.log('│   Command:', `${action} -> ${dahuaCommand}`);
         
         // Use Digest authentication for Dahua cameras
-        const digestClient = new DigestClient(cam.username, cam.password);
+        const digestClient = new DigestAuthClient(cam.username, cam.password);
         const response = await digestClient.fetch(ptzUrl, {
           method: 'GET',
         });
@@ -448,12 +448,12 @@ export class PtzService {
         this.logger.error(`[PTZ HTTP] Failed: ${error.message}`);
         
         if (error.response) {
-          console.log('│   📊 Response status:', error.response.status);
-          console.log('│   📄 Response data:', error.response.data);
+          console.log('│   Response status:', error.response.status);
+          console.log('│   Response data:', error.response.data);
         } else if (error.code === 'ECONNREFUSED') {
-          console.log('│   ⚠️  Connection refused - check camera IP/port');
+          console.log('│   Connection refused - check camera IP/port');
         } else if (error.code === 'ETIMEDOUT') {
-          console.log('│   ⚠️  Timeout - camera not responding');
+          console.log('│   Timeout - camera not responding');
         }
       }
       
