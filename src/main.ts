@@ -36,18 +36,19 @@ async function bootstrap() {
 
   const preferredPort = parseInt(process.env.PORT || '3000', 10);
   const autoPort = process.env.AUTO_PORT === '1';
+  const host = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for deployment
 
   async function listenWithFallback(startPort: number): Promise<number> {
     if (!autoPort) {
       // Không bật fallback: thử port duy nhất
-      await app.listen(startPort);
+      await app.listen(startPort, host);
       return startPort;
     }
     const maxAttempts = 15; // thử tối đa 15 port liên tiếp
     let port = startPort;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        await app.listen(port);
+        await app.listen(port, host);
         if (port !== startPort) {
           console.warn(
             `PORT ${startPort} đã bận (EADDRINUSE) → tự động chuyển sang PORT ${port}. (Bật do AUTO_PORT=1)`,
@@ -68,7 +69,10 @@ async function bootstrap() {
   }
 
   const actualPort = await listenWithFallback(preferredPort);
-  console.log(`Camera API listening on http://localhost:${actualPort}`);
-}
-
-bootstrap();
+  const displayHost = host === '0.0.0.0' ? 'localhost' : host;
+  console.log(`✅ Camera API listening on http://${displayHost}:${actualPort}`);
+  console.log(`📡 Server running on ${host}:${actualPort}`);
+  if (process.env.DISABLE_SWAGGER !== '1') {
+    console.log(`📚 API Documentation: http://${displayHost}:${actualPort}/docs`);
+  }
+}bootstrap();
