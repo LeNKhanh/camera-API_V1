@@ -70,9 +70,9 @@ async function bootstrap() {
 
   const actualPort = await listenWithFallback(preferredPort);
   const displayHost = host === '0.0.0.0' ? 'localhost' : host;
-  console.log(`✅ Camera API listening on http://${displayHost}:${actualPort}`);
-  console.log(`📡 Server running on ${host}:${actualPort}`);
+  console.log(`Camera API listening on http://${displayHost}:${actualPort}`);
+  console.log(`Server running on ${host}:${actualPort}`);
   if (process.env.DISABLE_SWAGGER !== '1') {
-    console.log(`📚 API Documentation: http://${displayHost}:${actualPort}/docs`);
+    console.log(`API Documentation: http://${displayHost}:${actualPort}/docs`);
   }
 }bootstrap();

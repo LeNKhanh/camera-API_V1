@@ -6,12 +6,13 @@
   "license": "MIT",
   "scripts": {
     "build": "nest build",
-    "start": "node dist/main.js",
+    "start": "node scripts/run-migrations-prod.js && node dist/main.js",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings=0",
     "migration:run": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/data-source.ts",
+    "migration:run:prod": "node scripts/run-migrations-prod.js",
     "migration:generate": "ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:generate -d src/data-source.ts src/migrations/auto-migration",
     "seed": "ts-node -r tsconfig-paths/register src/seeds/seed.ts",
     "test": "jest --runInBand"
