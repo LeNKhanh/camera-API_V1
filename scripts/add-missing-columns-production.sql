@@ -1,7 +1,10 @@
 -- Thêm các cột thiếu vào bảng ptz_logs trên production
 -- Chạy script này nếu bạn muốn giữ data hiện tại
 
--- Thêm các cột mới
+-- Step 1: Remove deprecated camera_id column (replaced by ILoginID)
+ALTER TABLE ptz_logs DROP COLUMN IF EXISTS camera_id CASCADE;
+
+-- Step 2: Thêm các cột mới
 ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS command_code integer NOT NULL DEFAULT 0;
 ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS speed integer NOT NULL DEFAULT 1;
 ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS vector_pan integer NOT NULL DEFAULT 0;

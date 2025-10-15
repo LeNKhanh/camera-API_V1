@@ -5,7 +5,10 @@ const { Client } = require('pg');
 require('dotenv').config();
 
 const sql = `
--- Thêm các cột thiếu vào bảng ptz_logs
+-- Step 1: Remove deprecated camera_id column (replaced by ILoginID)
+ALTER TABLE ptz_logs DROP COLUMN IF EXISTS camera_id CASCADE;
+
+-- Step 2: Thêm các cột thiếu vào bảng ptz_logs
 ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS command_code integer NOT NULL DEFAULT 0;
 ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS speed integer NOT NULL DEFAULT 1;
 ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS vector_pan integer NOT NULL DEFAULT 0;

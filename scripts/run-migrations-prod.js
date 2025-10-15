@@ -15,31 +15,52 @@ async function fixPtzLogsSchema() {
   try {
     await client.connect();
     
-    // Check if ptz_logs table exists and missing columns
-    const checkResult = await client.query(`
+    // Check if ptz_logs table exists and what columns it has
+    const columnsResult = await client.query(`
       SELECT column_name 
       FROM information_schema.columns 
-      WHERE table_name = 'ptz_logs' AND column_name = 'command_code'
+      WHERE table_name = 'ptz_logs'
     `);
     
-    if (checkResult.rows.length === 0) {
-      console.log('🔧 Fixing ptz_logs schema (adding missing columns)...');
-      
-      await client.query(`
-        ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS command_code integer NOT NULL DEFAULT 0;
-        ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS speed integer NOT NULL DEFAULT 1;
-        ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS vector_pan integer NOT NULL DEFAULT 0;
-        ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS vector_tilt integer NOT NULL DEFAULT 0;
-        ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS vector_zoom integer NOT NULL DEFAULT 0;
-        ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS duration_ms integer;
-        ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS param1 integer;
-        ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS param2 integer;
-        ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS param3 integer;
-      `);
-      
-      console.log('✅ ptz_logs schema fixed successfully!');
+    const existingColumns = columnsResult.rows.map(r => r.column_name);
+    const hasCameraId = existingColumns.includes('camera_id');
+    const hasILoginID = existingColumns.includes('ILoginID');
+    const hasCommandCode = existingColumns.includes('command_code');
+    
+    if (columnsResult.rows.length === 0) {
+      console.log('✓ ptz_logs table does not exist yet (will be created by migration)');
     } else {
-      console.log('✓ ptz_logs schema is up to date');
+      let needsFix = false;
+      
+      // Fix 1: Remove old camera_id column if exists (replaced by ILoginID)
+      if (hasCameraId) {
+        console.log('🔧 Removing deprecated camera_id column...');
+        await client.query(`ALTER TABLE ptz_logs DROP COLUMN IF EXISTS camera_id CASCADE;`);
+        needsFix = true;
+      }
+      
+      // Fix 2: Add missing columns
+      if (!hasCommandCode) {
+        console.log('🔧 Adding missing columns to ptz_logs...');
+        await client.query(`
+          ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS command_code integer NOT NULL DEFAULT 0;
+          ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS speed integer NOT NULL DEFAULT 1;
+          ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS vector_pan integer NOT NULL DEFAULT 0;
+          ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS vector_tilt integer NOT NULL DEFAULT 0;
+          ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS vector_zoom integer NOT NULL DEFAULT 0;
+          ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS duration_ms integer;
+          ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS param1 integer;
+          ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS param2 integer;
+          ALTER TABLE ptz_logs ADD COLUMN IF NOT EXISTS param3 integer;
+        `);
+        needsFix = true;
+      }
+      
+      if (needsFix) {
+        console.log('✅ ptz_logs schema fixed successfully!');
+      } else {
+        console.log('✓ ptz_logs schema is up to date');
+      }
     }
     
     await client.end();
