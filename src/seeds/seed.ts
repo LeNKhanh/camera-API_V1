@@ -12,16 +12,25 @@ import { Snapshot } from '../typeorm/entities/snapshot.entity';
 dotenv.config();
 
 // DataSource tạm để seed nhanh (dùng cùng config với AppModule)
-const ds = new DataSource({
-  type: 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  username: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'Camera_api',
-  entities: [User, Camera, Recording, Event, Snapshot],
-  synchronize: true,
-});
+const dsConfig: any = process.env.DATABASE_URL
+  ? {
+      type: 'postgres',
+      url: process.env.DATABASE_URL,
+      entities: [User, Camera, Recording, Event, Snapshot],
+      synchronize: false, // Use migrations in production
+    }
+  : {
+      type: 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      username: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
+      database: process.env.DB_NAME || 'Camera_api',
+      entities: [User, Camera, Recording, Event, Snapshot],
+      synchronize: false, // Use migrations instead
+    };
+
+const ds = new DataSource(dsConfig);
 
 async function main() {
   await ds.initialize();
