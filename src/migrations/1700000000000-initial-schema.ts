@@ -48,19 +48,25 @@ export class InitialSchema1700000000000 implements MigrationInterface {
       )
     `);
 
-    // Create ptz_logs table
+    // Create ptz_logs table (full schema matching entity)
     await queryRunner.query(`
       CREATE TABLE IF NOT EXISTS "ptz_logs" (
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
-        "camera_id" uuid NOT NULL,
-        "action" varchar(50) NOT NULL,
-        "status" varchar(20) NOT NULL DEFAULT 'SUCCESS',
-        "error_message" text,
+        "ILoginID" uuid NOT NULL,
+        "nChannelID" integer NOT NULL DEFAULT 1,
+        "action" varchar(40) NOT NULL,
+        "command_code" integer NOT NULL DEFAULT 0,
+        "speed" integer NOT NULL DEFAULT 1,
+        "vector_pan" integer NOT NULL DEFAULT 0,
+        "vector_tilt" integer NOT NULL DEFAULT 0,
+        "vector_zoom" integer NOT NULL DEFAULT 0,
+        "duration_ms" integer,
+        "param1" integer,
+        "param2" integer,
+        "param3" integer,
         "created_at" timestamptz NOT NULL DEFAULT now(),
-        "ILoginID" varchar(64),
-        "nChannelID" integer,
         CONSTRAINT "PK_ptz_logs" PRIMARY KEY ("id"),
-        CONSTRAINT "FK_ptz_logs_camera" FOREIGN KEY ("camera_id") 
+        CONSTRAINT "FK_ptz_logs_camera_ILoginID" FOREIGN KEY ("ILoginID") 
           REFERENCES "cameras"("id") ON DELETE CASCADE ON UPDATE NO ACTION
       )
     `);
@@ -132,7 +138,7 @@ export class InitialSchema1700000000000 implements MigrationInterface {
     // Create indexes
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_cameras_ip" ON "cameras" ("ip_address")`);
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_cameras_enabled" ON "cameras" ("enabled")`);
-    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_ptz_logs_camera" ON "ptz_logs" ("camera_id")`);
+    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_ptz_logs_ILoginID" ON "ptz_logs" ("ILoginID")`);
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_ptz_logs_created" ON "ptz_logs" ("created_at")`);
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_recordings_camera" ON "recordings" ("camera_id")`);
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_recordings_status" ON "recordings" ("status")`);
