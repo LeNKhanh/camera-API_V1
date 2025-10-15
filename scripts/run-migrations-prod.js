@@ -7,7 +7,7 @@
 const { execSync } = require('child_process');
 const { Client } = require('pg');
 
-async function fixPtzLogsSchema() {
+async function fixDatabaseSchema() {
   const client = new Client({
     connectionString: process.env.DATABASE_URL,
   });
@@ -34,7 +34,7 @@ async function fixPtzLogsSchema() {
       
       // Fix 1: Remove old camera_id column if exists (replaced by ILoginID)
       if (hasCameraId) {
-        console.log('🔧 Removing deprecated camera_id column...');
+        console.log('🔧 Removing deprecated camera_id column from ptz_logs...');
         await client.query(`ALTER TABLE ptz_logs DROP COLUMN IF EXISTS camera_id CASCADE;`);
         needsFix = true;
       }
@@ -63,9 +63,31 @@ async function fixPtzLogsSchema() {
       }
     }
     
+    // Fix 3: Check and fix snapshots table
+    const snapshotsResult = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'snapshots'
+    `);
+    
+    if (snapshotsResult.rows.length > 0) {
+      const snapshotColumns = snapshotsResult.rows.map(r => r.column_name);
+      const hasCapturedAt = snapshotColumns.includes('captured_at');
+      
+      if (!hasCapturedAt) {
+        console.log('🔧 Adding missing captured_at column to snapshots...');
+        await client.query(`
+          ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS captured_at timestamptz NOT NULL DEFAULT now();
+        `);
+        console.log('✅ snapshots schema fixed successfully!');
+      } else {
+        console.log('✓ snapshots schema is up to date');
+      }
+    }
+    
     await client.end();
   } catch (error) {
-    console.warn('⚠️  Could not check/fix ptz_logs schema:', error.message);
+    console.warn('⚠️  Could not check/fix schema:', error.message);
     try { await client.end(); } catch {}
   }
 }
@@ -75,8 +97,8 @@ async function main() {
   console.log('📍 Using DATABASE_URL from environment');
 
   try {
-    // Step 1: Fix ptz_logs schema if needed (for existing deployments)
-    await fixPtzLogsSchema();
+    // Step 1: Fix database schema if needed (for existing deployments)
+    await fixDatabaseSchema();
     
     // Step 2: Run TypeORM migrations using production data source
     execSync('npx typeorm migration:run -d data-source-prod.js', { 

@@ -94,6 +94,7 @@ export class InitialSchema1700000000000 implements MigrationInterface {
         "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
         "camera_id" uuid NOT NULL,
         "storage_path" varchar(500) NOT NULL,
+        "captured_at" timestamptz NOT NULL DEFAULT now(),
         "created_at" timestamptz NOT NULL DEFAULT now(),
         CONSTRAINT "PK_snapshots" PRIMARY KEY ("id"),
         CONSTRAINT "FK_snapshots_camera" FOREIGN KEY ("camera_id") 
