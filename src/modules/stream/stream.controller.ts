@@ -20,4 +20,11 @@ export class StreamController {
   ) {
     return this.svc.getPlaybackUrl(cameraId, protocol);
   }
+
+  // Lấy RTSP URL trực tiếp từ camera để test với VLC
+  @Get(':cameraId/rtsp')
+  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  getRtspUrl(@Param('cameraId') cameraId: string) {
+    return this.svc.getRtspUrl(cameraId);
+  }
 }
