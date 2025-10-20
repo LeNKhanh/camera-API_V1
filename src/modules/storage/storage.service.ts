@@ -134,29 +134,47 @@ export class StorageService {
   }
 
   /**
+   * Kiểm tra xem path có phải là R2 URL không
+   */
+  isR2Url(path: string): boolean {
+    if (!path) return false;
+    // Check if URL starts with public URL base or R2 endpoint
+    if (this.publicUrlBase && path.startsWith(this.publicUrlBase)) {
+      return true;
+    }
+    const endpoint = process.env.R2_ENDPOINT || '';
+    if (endpoint && path.startsWith(endpoint)) {
+      return true;
+    }
+    // Check for common R2.dev subdomain pattern or any HTTPS URL
+    return path.startsWith('http://') || path.startsWith('https://');
+  }
+
+  /**
    * Extract R2 key từ URL
-   * @param url R2 public URL hoặc local path
+   * @param url R2 public URL
    * @returns R2 key hoặc null nếu không phải R2 URL
+   * Example: https://iotek.tn-cdn.net/recordings/cam-id/123.mp4 -> recordings/cam-id/123.mp4
    */
   extractR2Key(url: string): string | null {
-    if (!url.startsWith('http')) {
+    if (!this.isR2Url(url)) {
       return null;
     }
 
     try {
       const urlObj = new URL(url);
-      // Extract path without leading slash
-      return urlObj.pathname.substring(1);
+      // Remove leading slash
+      let pathname = urlObj.pathname.substring(1);
+      
+      // If URL contains bucket name, remove it
+      if (pathname.startsWith(`${this.bucketName}/`)) {
+        pathname = pathname.substring(this.bucketName.length + 1);
+      }
+      
+      return pathname;
     } catch {
       return null;
     }
-  }
-
-  /**
-   * Kiểm tra xem path có phải là R2 URL không
-   */
-  isR2Url(path: string): boolean {
-    return path.startsWith('http://') || path.startsWith('https://');
   }
 
   /**

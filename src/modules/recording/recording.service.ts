@@ -169,7 +169,8 @@ export class RecordingService {
         });
       };
       runWithFilter(0);
-      return { id: rec.id, storagePath: rec.storagePath, status: 'RUNNING' };
+      // Don't expose local temp path - will be R2 URL after completion
+      return { id: rec.id, status: 'RUNNING', strategy: 'FAKE' };
     }
 
     // ---------- RTSP (mặc định) ----------
@@ -177,7 +178,7 @@ export class RecordingService {
     const args = [
       '-hide_banner',
       '-rtsp_transport', 'tcp',
-      '-stimeout', '10000000',
+      '-timeout', '10000000',
       '-i', rtsp,
       '-t', String(durationSec),
       '-c', 'copy',
@@ -237,7 +238,8 @@ export class RecordingService {
       this.active.delete(rec.id);
     });
 
-    return { id: rec.id, storagePath: rec.storagePath, status: rec.status };
+    // Don't expose local temp path - will be R2 URL after completion
+    return { id: rec.id, status: rec.status, strategy: 'RTSP' };
   }
 
   // Dừng bản ghi đang chạy
@@ -259,16 +261,51 @@ export class RecordingService {
         info.proc.kill('SIGINT');
       }
     } catch {}
-    await this.recRepo.update(rec.id, { status: 'STOPPED', endedAt: new Date(), errorMessage: 'STOPPED_BY_USER' } as any);
+    
+    // Upload to R2 if recording was stopped by user
+    const currentPath = rec.storagePath;
+    let finalPath = currentPath;
+    
+    // Wait a bit for FFmpeg to flush and close the file
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    try {
+      finalPath = await this.uploadRecordingToR2(rec.id, currentPath, rec.camera.id);
+    } catch (e) {
+      console.error('[RECORDING] Failed to upload stopped recording to R2', (e as Error).message);
+    }
+    
+    await this.recRepo.update(rec.id, { 
+      status: 'STOPPED', 
+      endedAt: new Date(), 
+      errorMessage: 'STOPPED_BY_USER',
+      storagePath: finalPath 
+    } as any);
+    
     // Xóa map ngay (close handler sẽ thấy userStop và return nếu đến sau)
     this.active.delete(rec.id);
     return { id: rec.id, status: 'STOPPED' };
   }
 
   // Danh sách recordings (có thể lọc theo camera)
-  listRecordings(cameraId?: string) {
-    if (cameraId) return this.recRepo.find({ where: { camera: { id: cameraId } }, relations: ['camera'] });
-    return this.recRepo.find({ relations: ['camera'] });
+  async listRecordings(cameraId?: string) {
+    const recordings = cameraId 
+      ? await this.recRepo.find({ where: { camera: { id: cameraId } }, relations: ['camera'] })
+      : await this.recRepo.find({ relations: ['camera'] });
+    
+    // Transform response: hide local temp paths
+    return recordings.map(rec => {
+      const response: any = { ...rec };
+      
+      // If FAILED/PENDING/RUNNING and storagePath is local, don't expose it
+      if (['FAILED', 'PENDING', 'RUNNING'].includes(rec.status)) {
+        if (rec.storagePath && !this.storageService.isR2Url(rec.storagePath)) {
+          delete response.storagePath;
+        }
+      }
+      
+      return response;
+    });
   }
 
   // Lọc nâng cao: cameraId + status + from/to (ISO) áp dụng startedAt/endedAt giao thoa
@@ -280,13 +317,41 @@ export class RecordingService {
     if (opts.status) qb.andWhere('r.status = :status', { status: opts.status.toUpperCase() });
     if (opts.from) qb.andWhere('r.startedAt >= :from', { from: new Date(opts.from) });
     if (opts.to) qb.andWhere('r.startedAt <= :to', { to: new Date(opts.to) });
-    return qb.getMany();
+    const recordings = await qb.getMany();
+    
+    // Transform response: hide local temp paths
+    return recordings.map(rec => {
+      const response: any = { ...rec };
+      
+      // If FAILED/PENDING/RUNNING and storagePath is local, don't expose it
+      if (['FAILED', 'PENDING', 'RUNNING'].includes(rec.status)) {
+        if (rec.storagePath && !this.storageService.isR2Url(rec.storagePath)) {
+          delete response.storagePath;
+        }
+      }
+      
+      return response;
+    });
   }
 
   // Chi tiết bản ghi
   async getRecording(id: string) {
     const rec = await this.recRepo.findOne({ where: { id }, relations: ['camera'] });
     if (!rec) throw new NotFoundException('Recording not found');
-    return rec;
+    
+    // Transform response: hide local temp path, only show R2 URL if available
+    const response: any = { ...rec };
+    
+    // If FAILED/PENDING/RUNNING and storagePath is local, don't expose it
+    if (['FAILED', 'PENDING', 'RUNNING'].includes(rec.status)) {
+      if (rec.storagePath && !this.storageService.isR2Url(rec.storagePath)) {
+        delete response.storagePath;
+      }
+    }
+    
+    // If COMPLETED/STOPPED, storagePath should already be R2 URL
+    // (set by uploadRecordingToR2 in close handler)
+    
+    return response;
   }
 }
