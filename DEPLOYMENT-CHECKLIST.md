@@ -30,6 +30,7 @@
 ✅ App starts: npm start (auto-migration + server)
 ✅ Server: Listening on 0.0.0.0:3000
 ✅ All routes: Mapped correctly
+✅ R2 Storage: Integrated and tested
 ```
 
 ### Files to Commit
@@ -41,11 +42,74 @@
 ✅ scripts/run-migrations-prod.js (auto-migration on startup)
 ✅ data-source-prod.js (CommonJS DataSource for TypeORM CLI)
 ✅ package.json (updated build script)
+✅ src/modules/storage/ (NEW - R2 storage module)
+✅ src/modules/snapshot/snapshot.service.ts (updated for R2)
+✅ src/modules/recording/recording.service.ts (updated for R2)
+✅ docs/COOLIFY-R2-SETUP.md (NEW - production setup guide)
 
 # Deleted Files (confirm deleted)
 ❌ All 1758*.ts migrations (source files)
 ❌ All 1759*.ts migrations (source files)
 ```
+
+---
+
+## 🔑 Coolify Environment Variables Setup
+
+### Required R2 Variables
+```bash
+# === R2 Storage Configuration ===
+R2_ENDPOINT=https://a1000a80a775f57fe92ea14196486a3a.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=0c10ee4c19fe892894a9c5311798a69c
+R2_SECRET_ACCESS_KEY=20db186ea3ebb14ba05254a9b82b1f033fef297335ab8d4e7874e90634ca36bb
+R2_BUCKET_NAME=iotek
+R2_PUBLIC_URL=https://iotek.tn-cdn.net
+STORAGE_MODE=r2
+
+# === Database (Coolify format) ===
+DATABASE_URL=postgres://postgres:admin@nco8w4ccgskss8ccgwg0ggk4:5432/Camera_api
+
+# === Server ===
+PORT=3000
+HOST=0.0.0.0
+JWT_SECRET=production_secret_key_change_this
+
+# === Stream ===
+STREAM_BASE_URL=https://your-production-domain.com/live
+
+# === Directories (Linux paths!) ===
+RECORD_DIR=/tmp
+SNAPSHOT_DIR=/tmp
+
+# === Production Settings (disable debug) ===
+DEBUG_SNAPSHOT=0
+PTZ_THROTTLE_DEBUG=0
+REFRESH_DEBUG=0
+SNAPSHOT_FALLBACK_UDP=1
+
+# === PTZ ===
+PTZ_THROTTLE_MS=300
+PTZ_USE_ONVIF=0
+
+# === Recording ===
+FAKE_RECORD_SIZE=1280x720
+FAKE_RECORD_FPS=15
+FAKE_RECORD_CODEC=libx264
+FAKE_RECORD_QUALITY=23
+FAKE_RECORD_REALTIME=0
+```
+
+### ⚠️ Critical Differences: Local vs Production
+
+| Variable | Local (Windows) | Production (Coolify/Linux) |
+|----------|----------------|---------------------------|
+| `RECORD_DIR` | `C:\\tmp` | `/tmp` |
+| `SNAPSHOT_DIR` | `C:\\tmp` | `/tmp` |
+| `DATABASE_URL` | Commented out | **REQUIRED** |
+| `DB_HOST`, `DB_PORT`, etc. | Used | **NOT NEEDED** (use DATABASE_URL) |
+| `DEBUG_SNAPSHOT` | `1` (enabled) | `0` (disabled) |
+| `JWT_SECRET` | `dev_secret` | Strong production secret |
+| `STREAM_BASE_URL` | `localhost:8080` | Production domain |
 
 ---
 

@@ -6,9 +6,13 @@ import { Recording } from '../../typeorm/entities/recording.entity';
 import { Camera } from '../../typeorm/entities/camera.entity';
 import { RecordingService } from './recording.service';
 import { RecordingController } from './recording.controller';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Recording, Camera])],
+  imports: [
+    TypeOrmModule.forFeature([Recording, Camera]),
+    StorageModule,
+  ],
   controllers: [RecordingController],
   providers: [RecordingService],
 })

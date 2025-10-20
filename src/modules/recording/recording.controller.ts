@@ -11,6 +11,7 @@ import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
 import { JwtAuthGuard } from '../guards/jwt.guard';
 import { RecordingService } from './recording.service';
+import { StorageService } from '../storage/storage.service';
 
 class StartRecordingDto {
   @IsString()
@@ -35,7 +36,10 @@ class StartRecordingDto {
 @Controller('recordings')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class RecordingController {
-  constructor(private readonly svc: RecordingService) {}
+  constructor(
+    private readonly svc: RecordingService,
+    private readonly storageService: StorageService,
+  ) {}
 
   // Bắt đầu ghi từ một camera trong X giây
   @Post('start')
@@ -76,8 +80,27 @@ export class RecordingController {
   async download(@Param('id') id: string, @Res() res: Response) {
     const rec = await this.svc.getRecording(id);
     if (!rec.storagePath) return res.status(404).json({ error: 'NO_FILE' });
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Content-Disposition', `attachment; filename="${id}.mp4"`);
-    return res.sendFile(rec.storagePath);
+    
+    // Check if it's an R2 URL or local path
+    if (this.storageService.isR2Url(rec.storagePath)) {
+      // R2 URL - redirect to R2 public URL
+      return res.redirect(rec.storagePath);
+      
+      // Alternative: Proxy through server (more secure but uses bandwidth)
+      // const r2Key = this.storageService.extractR2Key(rec.storagePath);
+      // if (r2Key) {
+      //   const stream = await this.storageService.downloadFile(r2Key);
+      //   res.setHeader('Content-Type', 'video/mp4');
+      //   res.setHeader('Content-Disposition', `attachment; filename="${id}.mp4"`);
+      //   stream.pipe(res);
+      // } else {
+      //   return res.status(500).json({ error: 'INVALID_R2_URL' });
+      // }
+    } else {
+      // Local file - use sendFile
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Content-Disposition', `attachment; filename="${id}.mp4"`);
+      return res.sendFile(rec.storagePath);
+    }
   }
 }

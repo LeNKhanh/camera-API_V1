@@ -2,7 +2,8 @@
 // Luồng capture:
 // 1) Tìm camera -> build RTSP URL
 // 2) Tạo tên file đầu ra -> spawn ffmpeg lấy 1 frame nhanh
-// 3) Lưu bản ghi Snapshot vào DB và trả về
+// 3) Upload lên R2 (nếu STORAGE_MODE=r2)
+// 4) Lưu bản ghi Snapshot vào DB với R2 URL và trả về
 import { Injectable, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -16,6 +17,7 @@ import { unlink } from 'fs/promises';
 
 import { Camera } from '../../typeorm/entities/camera.entity';
 import { Snapshot } from '../../typeorm/entities/snapshot.entity';
+import { StorageService } from '../storage/storage.service';
 
 // Service chụp ảnh từ RTSP bằng FFmpeg (lấy frame đầu tiên)
 @Injectable()
@@ -23,6 +25,7 @@ export class SnapshotService {
   constructor(
     @InjectRepository(Camera) private readonly camRepo: Repository<Camera>,
     @InjectRepository(Snapshot) private readonly snapRepo: Repository<Snapshot>,
+    private readonly storageService: StorageService,
   ) {}
 
   // Ghi nhớ xem ffmpeg build hiện tại có hỗ trợ -stimeout hay không (null = chưa kiểm tra)
@@ -104,11 +107,32 @@ export class SnapshotService {
       if (!fakeOk) {
         throw new InternalServerErrorException(`SNAPSHOT_FAKE_FAILED: ${(lastErr as Error).message}`);
       }
-      const snap = this.snapRepo.create({ camera: cam, storagePath: outPath } as any);
+
+      // Upload to R2 (if enabled)
+      let finalStoragePath = outPath;
+      if (process.env.STORAGE_MODE === 'r2') {
+        try {
+          const r2Key = `snapshots/${cameraId}/${Date.now()}-${outName}`;
+          const r2Url = await this.storageService.uploadFile(outPath, r2Key);
+          finalStoragePath = r2Url;
+          
+          // Delete temp local file after upload
+          await unlink(outPath);
+          if (process.env.DEBUG_SNAPSHOT) {
+            // eslint-disable-next-line no-console
+            console.debug('[SNAPSHOT] Uploaded to R2 and deleted local temp', { r2Url });
+          }
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.error('[SNAPSHOT] R2 upload failed, keeping local file', (e as Error).message);
+        }
+      }
+
+      const snap = this.snapRepo.create({ camera: cam, storagePath: finalStoragePath } as any);
       await this.snapRepo.save(snap);
       if (process.env.DEBUG_SNAPSHOT) {
         // eslint-disable-next-line no-console
-        console.debug('[SNAPSHOT] FAKE strategy snapshot created', { cameraId: cam.id, path: outPath });
+        console.debug('[SNAPSHOT] FAKE strategy snapshot created', { cameraId: cam.id, path: finalStoragePath });
       }
       return snap;
     }
@@ -285,7 +309,27 @@ export class SnapshotService {
       }
     }
 
-  const snap = this.snapRepo.create({ camera: cam, storagePath: outPath } as any);
+  // Upload to R2 (if enabled)
+  let finalStoragePath = outPath;
+  if (process.env.STORAGE_MODE === 'r2') {
+    try {
+      const r2Key = `snapshots/${cameraId}/${Date.now()}-${outName}`;
+      const r2Url = await this.storageService.uploadFile(outPath, r2Key);
+      finalStoragePath = r2Url;
+      
+      // Delete temp local file after upload
+      await unlink(outPath);
+      if (process.env.DEBUG_SNAPSHOT) {
+        // eslint-disable-next-line no-console
+        console.debug('[SNAPSHOT] Uploaded to R2 and deleted local temp', { r2Url });
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[SNAPSHOT] R2 upload failed, keeping local file', (e as Error).message);
+    }
+  }
+
+  const snap = this.snapRepo.create({ camera: cam, storagePath: finalStoragePath } as any);
     await this.snapRepo.save(snap);
     return snap;
   }
@@ -304,15 +348,37 @@ export class SnapshotService {
   async remove(id: string) {
     const snap = await this.snapRepo.findOne({ where: { id } });
     if (!snap) throw new NotFoundException('Snapshot not found');
-    // Thử xoá file nếu tồn tại
-    if (snap.storagePath && existsSync(snap.storagePath)) {
-      try { await unlink(snap.storagePath); } catch (e) {
-        if (process.env.DEBUG_SNAPSHOT) {
-          // eslint-disable-next-line no-console
-          console.warn('[SNAPSHOT] unlink failed', (e as Error).message);
+    
+    // Xoá file từ storage (R2 hoặc local)
+    if (snap.storagePath) {
+      if (this.storageService.isR2Url(snap.storagePath)) {
+        // Delete from R2
+        const r2Key = this.storageService.extractR2Key(snap.storagePath);
+        if (r2Key) {
+          try {
+            await this.storageService.deleteFile(r2Key);
+            if (process.env.DEBUG_SNAPSHOT) {
+              // eslint-disable-next-line no-console
+              console.debug('[SNAPSHOT] Deleted from R2', { r2Key });
+            }
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn('[SNAPSHOT] R2 delete failed', (e as Error).message);
+          }
+        }
+      } else if (existsSync(snap.storagePath)) {
+        // Delete local file
+        try { 
+          await unlink(snap.storagePath); 
+        } catch (e) {
+          if (process.env.DEBUG_SNAPSHOT) {
+            // eslint-disable-next-line no-console
+            console.warn('[SNAPSHOT] unlink failed', (e as Error).message);
+          }
         }
       }
     }
+    
     await this.snapRepo.delete(id);
     return { deleted: true };
   }

@@ -6,9 +6,13 @@ import { Camera } from '../../typeorm/entities/camera.entity';
 import { Snapshot } from '../../typeorm/entities/snapshot.entity';
 import { SnapshotService } from './snapshot.service';
 import { SnapshotController } from './snapshot.controller';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Camera, Snapshot])],
+  imports: [
+    TypeOrmModule.forFeature([Camera, Snapshot]),
+    StorageModule,
+  ],
   controllers: [SnapshotController],
   providers: [SnapshotService],
 })

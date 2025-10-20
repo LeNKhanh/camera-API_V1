@@ -3,7 +3,7 @@
 // 1) Tìm camera -> build RTSP URL
 // 2) Tạo bản ghi trạng thái PENDING -> lưu
 // 3) spawn ffmpeg với tham số tối ưu -> cập nhật RUNNING
-// 4) Khi ffmpeg kết thúc: cập nhật COMPLETED/FAILED và thời gian endedAt
+// 4) Khi ffmpeg kết thúc: upload lên R2 (if enabled) -> cập nhật COMPLETED/FAILED và thời gian endedAt
 // 5) Có watchdog tự hủy tiến trình nếu vượt quá (duration + 20s)
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,9 +13,11 @@ import ffmpegPath from 'ffmpeg-static';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { unlink } from 'fs/promises';
 
 import { Recording } from '../../typeorm/entities/recording.entity';
 import { Camera } from '../../typeorm/entities/camera.entity';
+import { StorageService } from '../storage/storage.service';
 
 // Service điều khiển ghi hình bằng FFmpeg, lưu file local (có thể thay bằng S3)
 @Injectable()
@@ -23,10 +25,47 @@ export class RecordingService {
   constructor(
     @InjectRepository(Recording) private readonly recRepo: Repository<Recording>,
     @InjectRepository(Camera) private readonly camRepo: Repository<Camera>,
+    private readonly storageService: StorageService,
   ) {}
 
   // Lưu tiến trình đang chạy để có thể STOP
   private active: Map<string, { proc: ReturnType<typeof spawn>; strategy: string; started: number; natural?: boolean; userStop?: boolean; timer?: NodeJS.Timeout }> = new Map();
+
+  // Helper: Upload recording to R2 after FFmpeg completes (if enabled)
+  private async uploadRecordingToR2(recId: string, localPath: string, cameraId: string): Promise<string> {
+    if (process.env.STORAGE_MODE !== 'r2') {
+      return localPath; // Keep local path if R2 disabled
+    }
+
+    try {
+      const filename = localPath.split(/[\\/]/).pop() || `${Date.now()}.mp4`;
+      const r2Key = `recordings/${cameraId}/${Date.now()}-${filename}`;
+      const r2Url = await this.storageService.uploadFile(localPath, r2Key);
+      
+      if (process.env.DEBUG_RECORDING) {
+        // eslint-disable-next-line no-console
+        console.debug('[RECORDING] Uploaded to R2', { recId, r2Url });
+      }
+
+      // Delete temp local file after successful upload
+      try {
+        await unlink(localPath);
+        if (process.env.DEBUG_RECORDING) {
+          // eslint-disable-next-line no-console
+          console.debug('[RECORDING] Deleted local temp file', { localPath });
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[RECORDING] Failed to delete local temp file', (e as Error).message);
+      }
+
+      return r2Url;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[RECORDING] R2 upload failed, keeping local file', (e as Error).message);
+      return localPath; // Fallback to local on error
+    }
+  }
 
   // Phân loại stderr ffmpeg tương tự snapshot để dễ debug
   private classifyFfmpegError(stderr: string): string {
@@ -106,7 +145,9 @@ export class RecordingService {
             }
             if (a?.timer) clearTimeout(a.timer);
             if (a?.natural) {
-              await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
+              // Upload to R2 if enabled
+              const finalPath = await this.uploadRecordingToR2(rec.id, outPath, cameraId);
+              await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date(), storagePath: finalPath } as any);
               this.active.delete(rec.id);
               return;
             }
@@ -115,7 +156,9 @@ export class RecordingService {
               return;
             }
             if (code === 0) {
-              await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
+              // Upload to R2 if enabled
+              const finalPath = await this.uploadRecordingToR2(rec.id, outPath, cameraId);
+              await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date(), storagePath: finalPath } as any);
               this.active.delete(rec.id);
               return;
             }
@@ -172,7 +215,9 @@ export class RecordingService {
     child.on('close', async (code) => {
       clearTimeout(killer);
       if (code === 0) {
-        await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date() } as any);
+        // Upload to R2 if enabled
+        const finalPath = await this.uploadRecordingToR2(rec.id, outPath, cameraId);
+        await this.recRepo.update(rec.id, { status: 'COMPLETED', endedAt: new Date(), storagePath: finalPath } as any);
         this.active.delete(rec.id);
         return;
       }
