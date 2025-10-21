@@ -181,11 +181,17 @@ export class StreamService {
   ): Promise<void> {
     const addUrl = `${apiUrl}/v3/config/paths/add/${pathName}`;
     
+    // Authentication header for API access from non-localhost
+    const authHeader = 'Basic ' + Buffer.from('api_user:api_pass_2024').toString('base64');
+    
     try {
       // Check if path already exists
       const checkUrl = `${apiUrl}/v3/config/paths/get/${pathName}`;
       try {
-        await axios.get(checkUrl, { timeout: 5000 });  // Increased timeout
+        await axios.get(checkUrl, { 
+          headers: { 'Authorization': authHeader },
+          timeout: 5000,
+        });
         console.log(`[MediaMTX] Camera ${pathName} already registered`);
         return; // Path exists, no need to register
       } catch (checkError) {
@@ -204,9 +210,12 @@ export class StreamService {
       console.log(`[MediaMTX] Registering ${pathName}...`);
       console.log(`[MediaMTX]    API URL: ${addUrl}`);
       console.log(`[MediaMTX]    Source: ${sourceUrl}`);
-
+      
       await axios.post(addUrl, config, {  // Changed from PATCH to POST
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
         timeout: 10000,  // Increased from 3s to 10s for production
       });
 

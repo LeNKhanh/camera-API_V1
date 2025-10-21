@@ -72,6 +72,14 @@ api: yes
 # Address of the API listener.
 apiAddress: 0.0.0.0:9997
 
+# API authentication
+authInternalUsers:
+  - user: api_user
+    pass: api_pass_2024
+    ips: []
+    permissions:
+      - action: api
+
 ###############################################
 # Global settings -> Playback server
 
