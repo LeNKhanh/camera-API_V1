@@ -39,7 +39,7 @@ udpMaxPayloadSize: 1472
 # }
 # If the response code is 20x, authentication is accepted, otherwise
 # it is discarded.
-externalAuthenticationURL:
+
 
 # Enable Prometheus-compatible metrics.
 metrics: no
@@ -70,7 +70,7 @@ runOnDisconnect:
 # Enable controlling the server through the API.
 api: yes
 # Address of the API listener.
-apiAddress: 127.0.0.1:9997
+apiAddress: 0.0.0.0:9997
 
 ###############################################
 # Global settings -> Playback server
