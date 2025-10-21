@@ -89,11 +89,16 @@ export class StreamService {
     const sourceUrl = this.buildRtspUrl(cam);
     
     // Auto-register camera with MediaMTX via API
+    console.log(`[MediaMTX] 🎬 Auto-registration triggered for ${pathName}`);
+    console.log(`[MediaMTX]    Camera: ${cam.name} (${cam.id})`);
+    console.log(`[MediaMTX]    API URL: ${mediamtxApiUrl}`);
+    
     try {
       await this.registerCameraWithMediaMTX(pathName, sourceUrl, mediamtxApiUrl);
     } catch (error) {
-      console.log(`[MediaMTX] Camera ${pathName} registration: ${error.message}`);
-      // Continue anyway - camera might already be registered
+      console.error(`[MediaMTX] ⚠️  Camera ${pathName} registration failed: ${error.message}`);
+      // Log but continue - return proxy URL anyway for manual troubleshooting
+      // User can still try to use the stream even if registration failed
     }
     
     // Build proxy URLs
@@ -174,6 +179,8 @@ export class StreamService {
     sourceUrl: string,
     apiUrl: string,
   ): Promise<void> {
+    const addUrl = `${apiUrl}/v3/config/paths/add/${pathName}`;
+    
     try {
       // Check if path already exists
       const checkUrl = `${apiUrl}/v3/config/paths/get/${pathName}`;
@@ -186,7 +193,6 @@ export class StreamService {
       }
 
       // Register new path
-      const addUrl = `${apiUrl}/v3/config/paths/add/${pathName}`;
       const config = {
         source: sourceUrl,
         sourceProtocol: 'automatic',
@@ -195,6 +201,10 @@ export class StreamService {
         // Instead, MediaMTX will pull stream directly from camera
       };
 
+      console.log(`[MediaMTX] 🔄 Registering ${pathName}...`);
+      console.log(`[MediaMTX]    API URL: ${addUrl}`);
+      console.log(`[MediaMTX]    Source: ${sourceUrl}`);
+
       await axios.post(addUrl, config, {  // Changed from PATCH to POST
         headers: { 'Content-Type': 'application/json' },
         timeout: 3000,
@@ -202,8 +212,41 @@ export class StreamService {
 
       console.log(`[MediaMTX] ✅ Camera ${pathName} auto-registered successfully`);
     } catch (error) {
-      const errorMsg = error.response?.data?.error || error.message;
-      throw new Error(`Failed to register with MediaMTX: ${errorMsg}`);
+      // Enhanced error logging for production debugging
+      const errorDetails = {
+        pathName,
+        apiUrl: addUrl,
+        sourceUrl,
+        error: {
+          message: error.message,
+          code: error.code,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+        },
+        requestConfig: error.config ? {
+          method: error.config.method,
+          url: error.config.url,
+          timeout: error.config.timeout,
+        } : undefined,
+      };
+      
+      console.error(`[MediaMTX] ❌ Registration failed:`, JSON.stringify(errorDetails, null, 2));
+      
+      // More specific error messages
+      if (error.code === 'ECONNREFUSED') {
+        throw new Error(`Cannot connect to MediaMTX API at ${apiUrl}. Is MediaMTX running?`);
+      } else if (error.code === 'ETIMEDOUT') {
+        throw new Error(`MediaMTX API timeout at ${apiUrl}. Check network connectivity.`);
+      } else if (error.response?.status === 404) {
+        throw new Error(`MediaMTX API endpoint not found. Check API URL: ${addUrl}`);
+      } else if (error.response?.status === 400) {
+        const apiError = error.response?.data?.error || 'Bad Request';
+        throw new Error(`MediaMTX rejected request: ${apiError}`);
+      } else {
+        const errorMsg = error.response?.data?.error || error.message || 'Unknown error';
+        throw new Error(`Failed to register with MediaMTX: ${errorMsg}`);
+      }
     }
   }
 }
