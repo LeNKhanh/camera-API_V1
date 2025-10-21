@@ -89,14 +89,14 @@ export class StreamService {
     const sourceUrl = this.buildRtspUrl(cam);
     
     // Auto-register camera with MediaMTX via API
-    console.log(`[MediaMTX] 🎬 Auto-registration triggered for ${pathName}`);
-    console.log(`[MediaMTX]    Camera: ${cam.name} (${cam.id})`);
-    console.log(`[MediaMTX]    API URL: ${mediamtxApiUrl}`);
+    console.log(`[MediaMTX] Auto-registration triggered for ${pathName}`);
+    console.log(`[MediaMTX] Camera: ${cam.name} (${cam.id})`);
+    console.log(`[MediaMTX] API URL: ${mediamtxApiUrl}`);
     
     try {
       await this.registerCameraWithMediaMTX(pathName, sourceUrl, mediamtxApiUrl);
     } catch (error) {
-      console.error(`[MediaMTX] ⚠️  Camera ${pathName} registration failed: ${error.message}`);
+      console.error(`[MediaMTX] Camera ${pathName} registration failed: ${error.message}`);
       // Log but continue - return proxy URL anyway for manual troubleshooting
       // User can still try to use the stream even if registration failed
     }
@@ -201,7 +201,7 @@ export class StreamService {
         // Instead, MediaMTX will pull stream directly from camera
       };
 
-      console.log(`[MediaMTX] 🔄 Registering ${pathName}...`);
+      console.log(`[MediaMTX] Registering ${pathName}...`);
       console.log(`[MediaMTX]    API URL: ${addUrl}`);
       console.log(`[MediaMTX]    Source: ${sourceUrl}`);
 
@@ -210,7 +210,7 @@ export class StreamService {
         timeout: 3000,
       });
 
-      console.log(`[MediaMTX] ✅ Camera ${pathName} auto-registered successfully`);
+      console.log(`[MediaMTX] SUCCESS: Camera ${pathName} auto-registered successfully`);
     } catch (error) {
       // Enhanced error logging for production debugging
       const errorDetails = {
@@ -231,7 +231,7 @@ export class StreamService {
         } : undefined,
       };
       
-      console.error(`[MediaMTX] ❌ Registration failed:`, JSON.stringify(errorDetails, null, 2));
+      console.error(`[MediaMTX] ERROR: Registration failed:`, JSON.stringify(errorDetails, null, 2));
       
       // More specific error messages
       if (error.code === 'ECONNREFUSED') {
