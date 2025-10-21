@@ -201,8 +201,10 @@ export class StreamService {
       // Register new path
       const config = {
         source: sourceUrl,
-        sourceProtocol: 'automatic',
+        sourceProtocol: 'tcp',  // Force TCP for more reliable connection
         sourceAnyPortEnable: false,
+        readTimeout: '20s',
+        readBufferCount: 512,
         // sourceOnDemand: true,  // REMOVED - requires FFmpeg
         // Instead, MediaMTX will pull stream directly from camera
       };
