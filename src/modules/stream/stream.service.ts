@@ -203,10 +203,8 @@ export class StreamService {
         source: sourceUrl,
         sourceProtocol: 'tcp',  // Force TCP for more reliable connection
         sourceAnyPortEnable: false,
-        readTimeout: '20s',
-        readBufferCount: 512,
-        // sourceOnDemand: true,  // REMOVED - requires FFmpeg
-        // Instead, MediaMTX will pull stream directly from camera
+        // readTimeout and readBufferCount are GLOBAL settings, not path settings
+        // They are configured in mediamtx.yml instead
       };
 
       console.log(`[MediaMTX] Registering ${pathName}...`);
