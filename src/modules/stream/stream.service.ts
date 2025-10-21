@@ -185,7 +185,7 @@ export class StreamService {
       // Check if path already exists
       const checkUrl = `${apiUrl}/v3/config/paths/get/${pathName}`;
       try {
-        await axios.get(checkUrl, { timeout: 2000 });
+        await axios.get(checkUrl, { timeout: 5000 });  // Increased timeout
         console.log(`[MediaMTX] Camera ${pathName} already registered`);
         return; // Path exists, no need to register
       } catch (checkError) {
@@ -207,7 +207,7 @@ export class StreamService {
 
       await axios.post(addUrl, config, {  // Changed from PATCH to POST
         headers: { 'Content-Type': 'application/json' },
-        timeout: 3000,
+        timeout: 10000,  // Increased from 3s to 10s for production
       });
 
       console.log(`[MediaMTX] SUCCESS: Camera ${pathName} auto-registered successfully`);
