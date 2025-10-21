@@ -1,0 +1,15 @@
+# MediaMTX Executables
+mediamtx.exe
+mediamtx
+*.exe
+*.zip
+*.tar.gz
+
+# Logs
+*.log
+
+# Recordings
+recordings/
+
+# Temporary files
+*.tmp

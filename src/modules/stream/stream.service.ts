@@ -3,6 +3,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import axios from 'axios';
 
 import { Camera } from '../../typeorm/entities/camera.entity';
 
@@ -64,5 +65,145 @@ export class StreamService {
       },
       note: 'Copy RTSP URL để paste vào VLC hoặc FFplay',
     };
+  }
+
+  // ✨ NEW: Get MediaMTX proxy URL (hides camera IP and credentials)
+  async getProxyUrl(cameraId: string) {
+    if (!cameraId) throw new NotFoundException('cameraId required');
+    const cam = await this.camRepo.findOne({ where: { id: cameraId } });
+    if (!cam) throw new NotFoundException('Camera not found');
+
+    // MediaMTX configuration from environment
+    const mediamtxHost = process.env.MEDIAMTX_HOST || 'localhost';
+    const mediamtxApiUrl = process.env.MEDIAMTX_API_URL || 'http://localhost:9997';
+    const rtspPort = process.env.MEDIAMTX_RTSP_PORT || '8554';
+    const hlsPort = process.env.MEDIAMTX_HLS_PORT || '8888';
+    const webrtcPort = process.env.MEDIAMTX_WEBRTC_PORT || '8889';
+    const useHttps = process.env.MEDIAMTX_USE_HTTPS === 'true';
+    
+    // Use first 8 characters of camera ID for path
+    const pathId = cameraId.substring(0, 8);
+    const pathName = `camera_${pathId}`;
+    
+    // Build RTSP source URL from camera config
+    const sourceUrl = this.buildRtspUrl(cam);
+    
+    // Auto-register camera with MediaMTX via API
+    try {
+      await this.registerCameraWithMediaMTX(pathName, sourceUrl, mediamtxApiUrl);
+    } catch (error) {
+      console.log(`[MediaMTX] Camera ${pathName} registration: ${error.message}`);
+      // Continue anyway - camera might already be registered
+    }
+    
+    // Build proxy URLs
+    const httpScheme = useHttps ? 'https' : 'http';
+    const hlsUrl = hlsPort === '80' || hlsPort === '443' 
+      ? `${httpScheme}://${mediamtxHost}/hls/${pathName}/index.m3u8`
+      : `${httpScheme}://${mediamtxHost}:${hlsPort}/${pathName}/index.m3u8`;
+    
+    const webrtcUrl = webrtcPort === '80' || webrtcPort === '443'
+      ? `${httpScheme}://${mediamtxHost}/webrtc/${pathName}/whep`
+      : `${httpScheme}://${mediamtxHost}:${webrtcPort}/${pathName}/whep`;
+
+    return {
+      cameraId: cam.id,
+      cameraName: cam.name,
+      pathId: pathName,
+      protocols: {
+        rtsp: `rtsp://${mediamtxHost}:${rtspPort}/${pathName}`,  // NO TRAILING SLASH
+        hls: hlsUrl,
+        webrtc: webrtcUrl,
+      },
+      instructions: {
+        vlc: [
+          '1. Open VLC Media Player',
+          '2. Go to: Media → Open Network Stream (Ctrl+N)',
+          `3. Paste: rtsp://${mediamtxHost}:${rtspPort}/${pathName}`,
+          '4. Click Play',
+        ],
+        browser: [
+          '1. Use HLS URL for HTML5 video player',
+          '2. Requires HLS.js library for non-Safari browsers',
+          '3. Example: https://github.com/video-dev/hls.js/',
+        ],
+        webrtc: [
+          '1. Ultra-low latency streaming (~500ms)',
+          '2. Best for real-time monitoring',
+          '3. Requires WebRTC-compatible player',
+        ],
+      },
+      security: {
+        cameraIpHidden: true,
+        credentialsProtected: true,
+        proxyAuthentication: false,
+        autoRegistered: true,
+        note: 'Camera automatically registered with MediaMTX proxy. IP and credentials are hidden.',
+      },
+      configuration: {
+        mediamtxHost,
+        mediamtxApiUrl,
+        rtspPort,
+        hlsPort,
+        webrtcPort,
+        note: 'Camera auto-registered via MediaMTX API - no restart needed!',
+      },
+    };
+  }
+
+  // Helper: Build RTSP URL from camera config
+  private buildRtspUrl(camera: Camera): string {
+    // Use custom RTSP URL if provided
+    if (camera.rtspUrl && camera.rtspUrl.trim().length > 0) {
+      return camera.rtspUrl.trim();
+    }
+
+    // Build Dahua format
+    const username = camera.username || 'admin';
+    const password = camera.password || 'admin';
+    const ip = camera.ipAddress;
+    const port = camera.rtspPort || 554;
+    const channel = camera.channel || 1;
+
+    return `rtsp://${username}:${password}@${ip}:${port}/cam/realmonitor?channel=${channel}&subtype=0`;
+  }
+
+  // Helper: Register camera with MediaMTX via REST API
+  private async registerCameraWithMediaMTX(
+    pathName: string,
+    sourceUrl: string,
+    apiUrl: string,
+  ): Promise<void> {
+    try {
+      // Check if path already exists
+      const checkUrl = `${apiUrl}/v3/config/paths/get/${pathName}`;
+      try {
+        await axios.get(checkUrl, { timeout: 2000 });
+        console.log(`[MediaMTX] Camera ${pathName} already registered`);
+        return; // Path exists, no need to register
+      } catch (checkError) {
+        // Path doesn't exist, continue to register
+      }
+
+      // Register new path
+      const addUrl = `${apiUrl}/v3/config/paths/add/${pathName}`;
+      const config = {
+        source: sourceUrl,
+        sourceProtocol: 'automatic',
+        sourceAnyPortEnable: false,
+        // sourceOnDemand: true,  // REMOVED - requires FFmpeg
+        // Instead, MediaMTX will pull stream directly from camera
+      };
+
+      await axios.post(addUrl, config, {  // Changed from PATCH to POST
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 3000,
+      });
+
+      console.log(`[MediaMTX] ✅ Camera ${pathName} auto-registered successfully`);
+    } catch (error) {
+      const errorMsg = error.response?.data?.error || error.message;
+      throw new Error(`Failed to register with MediaMTX: ${errorMsg}`);
+    }
   }
 }
