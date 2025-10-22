@@ -1,0 +1,57 @@
+###############################################
+# MediaMTX Local Configuration (Development)
+
+logLevel: info
+logDestinations: [stdout]
+readTimeout: 20s
+writeTimeout: 10s
+
+###############################################
+# API - No authentication for local
+
+api: yes
+apiAddress: 127.0.0.1:9997
+
+###############################################
+# RTSP
+
+rtsp: yes
+rtspAddress: :8554
+protocols: [tcp]
+encryption: "no"
+
+###############################################
+# HLS
+
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsSegmentMaxSize: 50M
+hlsAllowOrigin: '*'
+
+###############################################
+# WebRTC
+
+webrtc: yes
+webrtcAddress: :8889
+
+###############################################
+# Paths (dynamic via API)
+
+# Default path settings for all cameras
+pathDefaults:
+  sourceOnDemand: no
+  sourceOnDemandStartTimeout: 10s
+  sourceOnDemandCloseAfter: 10s
+  rtspTransport: tcp
+
+# Camera paths
+paths:
+  camera_49e77c80:
+    source: rtsp://aidev:aidev123@192.168.1.66:554/cam/realmonitor?channel=2&subtype=1
+    sourceOnDemand: no
+    rtspTransport: tcp

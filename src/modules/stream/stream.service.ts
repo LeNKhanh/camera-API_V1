@@ -103,12 +103,19 @@ export class StreamService {
     
     // Build proxy URLs
     const httpScheme = useHttps ? 'https' : 'http';
+    
+    // HLS URL format for MediaMTX: http://host:port/pathName/index.m3u8
     const hlsUrl = hlsPort === '80' || hlsPort === '443' 
-      ? `${httpScheme}://${mediamtxHost}/hls/${pathName}/index.m3u8`
+      ? `${httpScheme}://${mediamtxHost}/${pathName}/index.m3u8`
       : `${httpScheme}://${mediamtxHost}:${hlsPort}/${pathName}/index.m3u8`;
     
+    // Web Player URL (HTML page with embedded player)
+    const webPlayerUrl = hlsPort === '80' || hlsPort === '443'
+      ? `${httpScheme}://${mediamtxHost}/${pathName}`
+      : `${httpScheme}://${mediamtxHost}:${hlsPort}/${pathName}`;
+    
     const webrtcUrl = webrtcPort === '80' || webrtcPort === '443'
-      ? `${httpScheme}://${mediamtxHost}/webrtc/${pathName}/whep`
+      ? `${httpScheme}://${mediamtxHost}/${pathName}/whep`
       : `${httpScheme}://${mediamtxHost}:${webrtcPort}/${pathName}/whep`;
 
     return {
@@ -118,19 +125,22 @@ export class StreamService {
       protocols: {
         rtsp: `rtsp://${mediamtxHost}:${rtspPort}/${pathName}`,  // NO TRAILING SLASH
         hls: hlsUrl,
+        hlsWebPlayer: webPlayerUrl,  // NEW: Web player with embedded HLS
         webrtc: webrtcUrl,
       },
       instructions: {
         vlc: [
           '1. Open VLC Media Player',
           '2. Go to: Media → Open Network Stream (Ctrl+N)',
-          `3. Paste: rtsp://${mediamtxHost}:${rtspPort}/${pathName}`,
+          `3. Paste RTSP URL: rtsp://${mediamtxHost}:${rtspPort}/${pathName}`,
           '4. Click Play',
         ],
         browser: [
-          '1. Use HLS URL for HTML5 video player',
-          '2. Requires HLS.js library for non-Safari browsers',
-          '3. Example: https://github.com/video-dev/hls.js/',
+          '1. OPTION A: Open Web Player URL (easiest)',
+          `   ${webPlayerUrl}`,
+          '2. OPTION B: Use HLS URL with HLS.js library',
+          `   ${hlsUrl}`,
+          '3. Note: Stream must be active (someone watching via RTSP/WebRTC) for HLS to work',
         ],
         webrtc: [
           '1. Ultra-low latency streaming (~500ms)',
