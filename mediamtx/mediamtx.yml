@@ -130,7 +130,9 @@ authJWTClaimKey: mediamtx_permissions
 # Enable controlling the server through the Control API.
 api: yes
 # Address of the Control API listener.
-apiAddress: 127.0.0.1:9997
+# Use 0.0.0.0:9997 if Camera API is in different container
+# Use 127.0.0.1:9997 if Camera API is on same host
+apiAddress: 0.0.0.0:9997
 # Enable TLS/HTTPS on the Control API server.
 apiEncryption: no
 # Path to the server key. This is needed only when encryption is yes.
