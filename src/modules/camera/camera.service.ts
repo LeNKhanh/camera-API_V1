@@ -14,18 +14,23 @@ export class CameraService {
   // Tạo mới camera
   async create(dto: any) {
     this.validateIp(dto.ipAddress);
-    // Logic mới: nếu IP đã tồn tại -> channel = (max channel hiện có cho IP) + 1
-    // Nếu IP chưa tồn tại -> dùng channel request (nếu hợp lệ) hoặc 1.
-    let channel: number;
-    const existing = await this.repo.createQueryBuilder('c')
-      .select('MAX(c.channel)', 'max')
-      .where('c.ipAddress = :ip', { ip: dto.ipAddress })
-      .getRawOne<{ max: number | null }>();
-    if (existing && existing.max) {
-      channel = (existing.max || 0) + 1;
-    } else {
-      channel = dto.channel && dto.channel > 0 ? dto.channel : 1;
+    // Logic: Ưu tiên dùng channel từ request, nếu không có thì mặc định = 1
+    let channel = dto.channel && dto.channel > 0 ? dto.channel : 1;
+    
+    // Kiểm tra duplicate (ipAddress, channel)
+    const duplicate = await this.repo.findOne({ 
+      where: { ipAddress: dto.ipAddress, channel } 
+    });
+    
+    if (duplicate) {
+      // Nếu channel bị trùng -> tìm channel tiếp theo available
+      const existing = await this.repo.createQueryBuilder('c')
+        .select('MAX(c.channel)', 'max')
+        .where('c.ipAddress = :ip', { ip: dto.ipAddress })
+        .getRawOne<{ max: number | null }>();
+      channel = (existing?.max || 0) + 1;
     }
+    
     const cam: Partial<Camera> = {
       name: dto.name,
       ipAddress: dto.ipAddress,
