@@ -1,72 +1,53 @@
 // ============================================================================
-// PLAYBACK SERVICE
+// PLAYBACK SERVICE - EVENT-TRIGGERED RECORDING
 // ============================================================================
-// Mục đích: Quản lý session phát lại video đã ghi (recordings)
+// Mục đích: Quản lý event-driven recording - Tự động record khi có event
 // 
 // Nghiệp vụ chính:
-// 1. CREATE: Tạo playback session từ recording
-// 2. LIST: Danh sách playback sessions (filter theo recording/camera/user/status)
-// 3. GET: Chi tiết playback session
-// 4. UPDATE_POSITION: Cập nhật vị trí hiện tại (seek, resume)
-// 5. UPDATE_STATUS: Chuyển trạng thái (play/pause/stop)
-// 6. DELETE: Xóa playback session
-// 7. ANALYTICS: Thống kê lượt xem
+// 1. START_RECORDING: Bắt đầu record khi event được tạo
+// 2. STOP_RECORDING: Dừng record khi event kết thúc + upload R2
+// 3. LIST: Danh sách playbacks với filter
+// 4. GET: Chi tiết playback
+// 5. DELETE: Xóa playback + video trên R2
 // 
-// Luồng tạo playback:
-// 1. Kiểm tra recording tồn tại và COMPLETED
-// 2. Kiểm tra file video tồn tại
-// 3. Tạo stream URL (HLS/DASH/HTTP_MP4) hoặc dùng file trực tiếp
-// 4. Lưu session với status PENDING
-// 5. Trả về URL để client phát
-// 
-// Tính năng mở rộng:
-// - Transcoding on-the-fly (ffmpeg)
-// - Adaptive bitrate streaming
-// - DRM protection
-// - Analytics (watch duration, completion rate)
+// Luồng recording:
+// 1. Event created → Auto-call startRecordingForEvent()
+// 2. Tạo Playback record với status RECORDING
+// 3. Spawn FFmpeg process để record RTSP real-time
+// 4. Store process vào Map để stop sau
+// 5. Event ended → stopRecordingForEvent()
+// 6. Kill FFmpeg process (graceful SIGINT)
+// 7. Upload video lên R2
+// 8. Update Playback với video_url, status COMPLETED
+// 9. Delete local temp file
 // ============================================================================
 
-import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, In } from 'typeorm';
-import { existsSync } from 'fs';
-import { Request } from 'express';
+import { Repository } from 'typeorm';
+import { spawn, ChildProcess } from 'child_process';
+import { existsSync, unlinkSync, mkdirSync, statSync, readFileSync } from 'fs';
+import { join } from 'path';
+import * as ffmpegStatic from 'ffmpeg-static';
+import { execSync } from 'child_process';
 
-import { Playback, PlaybackStatus, PlaybackProtocol } from '../../typeorm/entities/playback.entity';
-import { Recording } from '../../typeorm/entities/recording.entity';
+import { Playback, RecordingStatus } from '../../typeorm/entities/playback.entity';
+import { Event } from '../../typeorm/entities/event.entity';
 import { Camera } from '../../typeorm/entities/camera.entity';
 
+// Import Storage Service (giống snapshot, recording)
+import { StorageService } from '../storage/storage.service';
+
 // ============================================================================
-// DTOs (Data Transfer Objects)
+// DTOs
 // ============================================================================
 
-// DTO: Tạo playback session
-export interface CreatePlaybackDto {
-  recordingId: string;              // ID của recording cần phát
-  protocol?: PlaybackProtocol;      // HLS/DASH/RTSP/HTTP_MP4 (default: HLS)
-  startPositionSec?: number;        // Bắt đầu từ giây thứ X (default: 0)
-}
-
-// DTO: Cập nhật vị trí playback (seek/resume)
-export interface UpdatePlaybackPositionDto {
-  currentPositionSec: number;       // Vị trí hiện tại (giây)
-}
-
-// DTO: Cập nhật trạng thái playback
-export interface UpdatePlaybackStatusDto {
-  status: PlaybackStatus;           // PLAYING/PAUSED/STOPPED/COMPLETED
-}
-
-// DTO: Filter danh sách playback
 export interface ListPlaybackDto {
-  recordingId?: string;             // Filter theo recording
-  cameraId?: string;                // Filter theo camera
-  userId?: string;                  // Filter theo user
-  status?: PlaybackStatus;          // Filter theo trạng thái
-  from?: string;                    // Filter từ thời gian (ISO8601)
-  to?: string;                      // Filter đến thời gian (ISO8601)
-  page?: number;                    // Trang hiện tại (default: 1)
-  pageSize?: number;                // Số record/trang (default: 20)
+  eventId?: string;
+  cameraId?: string;
+  recordingStatus?: RecordingStatus;
+  page?: number;
+  pageSize?: number;
 }
 
 // ============================================================================
@@ -74,106 +55,269 @@ export interface ListPlaybackDto {
 // ============================================================================
 @Injectable()
 export class PlaybackService {
+  // Map lưu FFmpeg processes đang chạy (playbackId -> ChildProcess)
+  private activeRecordings = new Map<string, ChildProcess>();
+
   constructor(
     @InjectRepository(Playback)
     private readonly playbackRepo: Repository<Playback>,
     
-    @InjectRepository(Recording)
-    private readonly recordingRepo: Repository<Recording>,
+    @InjectRepository(Event)
+    private readonly eventRepo: Repository<Event>,
     
     @InjectRepository(Camera)
     private readonly cameraRepo: Repository<Camera>,
+
+    private readonly storageService: StorageService,
   ) {}
 
   // ==========================================================================
-  // CREATE PLAYBACK SESSION
+  // START RECORDING FOR EVENT
   // ==========================================================================
-  // Tạo session playback mới từ recording đã ghi
-  // 
-  // Flow:
-  // 1. Validate recording tồn tại và COMPLETED
-  // 2. Validate file video tồn tại trên disk
-  // 3. Generate stream URL theo protocol
-  // 4. Track user info từ request (audit/analytics)
-  // 5. Tạo playback session với status PENDING
-  // 6. Trả về playback info + stream URL
+  // Called by EventService when event is created
+  // Auto-start FFmpeg recording to local temp file
   // ==========================================================================
-  async create(dto: CreatePlaybackDto, req?: Request): Promise<Playback> {
-    // ------------------------------------------------------------------------
-    // STEP 1: Validate recording
-    // ------------------------------------------------------------------------
-    const recording = await this.recordingRepo.findOne({
-      where: { id: dto.recordingId },
-      relations: ['camera'],
-    });
+  async startRecordingForEvent(eventId: string, cameraId: string): Promise<Playback> {
+    console.log(`[Playback] Starting recording for event ${eventId}...`);
 
-    if (!recording) {
-      throw new NotFoundException(`Recording with ID ${dto.recordingId} not found`);
+    // 1. Validate event và camera
+    const event = await this.eventRepo.findOne({ where: { id: eventId } });
+    if (!event) {
+      throw new NotFoundException(`Event ${eventId} not found`);
     }
 
-    // Chỉ cho phép playback recording đã hoàn tất
-    if (recording.status !== 'COMPLETED') {
-      throw new BadRequestException(
-        `Cannot playback recording with status ${recording.status}. ` +
-        `Only COMPLETED recordings can be played back.`
-      );
+    const camera = await this.cameraRepo.findOne({ where: { id: cameraId } });
+    if (!camera) {
+      throw new NotFoundException(`Camera ${cameraId} not found`);
     }
 
-    // ------------------------------------------------------------------------
-    // STEP 2: Validate file tồn tại
-    // ------------------------------------------------------------------------
-    if (!existsSync(recording.storagePath)) {
-      throw new NotFoundException(
-        `Recording file not found at ${recording.storagePath}. ` +
-        `The file may have been deleted or moved.`
-      );
-    }
-
-    // ------------------------------------------------------------------------
-    // STEP 3: Generate stream URL theo protocol
-    // ------------------------------------------------------------------------
-    const protocol = dto.protocol || 'HLS';
-    const streamUrl = this.generateStreamUrl(recording, protocol);
-
-    // ------------------------------------------------------------------------
-    // STEP 4: Extract user info từ request (nếu có)
-    // ------------------------------------------------------------------------
-    const user = req?.['user'] as { id?: string; username?: string } | undefined;
-    const userId = user?.id || null;
-    const username = user?.username || null;
-    const userAgent = req?.headers['user-agent'] || null;
-    const clientIp = this.extractClientIp(req);
-
-    // ------------------------------------------------------------------------
-    // STEP 5: Tạo playback session
-    // ------------------------------------------------------------------------
+    // 2. Tạo playback record
     const playback = this.playbackRepo.create({
-      recording,
-      camera: recording.camera,
-      streamUrl,
-      protocol,
-      status: 'PENDING',
-      currentPositionSec: dto.startPositionSec || 0,
-      startedAt: null, // Sẽ set khi client bắt đầu phát
-      userId,
-      username,
-      userAgent,
-      clientIp,
+      event,
+      camera,
+      recordingStatus: 'RECORDING',
+      startedAt: new Date(),
+      codec: camera.codec || 'H.264',
+      resolution: camera.resolution || '1080p',
     });
-
     const saved = await this.playbackRepo.save(playback);
 
-    // ------------------------------------------------------------------------
-    // STEP 6: Trả về với relations đầy đủ
-    // ------------------------------------------------------------------------
-    return this.playbackRepo.findOne({
-      where: { id: saved.id },
-      relations: ['recording', 'camera'],
+    // 3. Bắt đầu FFmpeg recording (async, không block)
+    this.startFFmpegRecording(saved.id, camera)
+      .then(localPath => {
+        // Update local_path sau khi FFmpeg start xong
+        return this.playbackRepo.update(saved.id, { localPath } as any);
+      })
+      .catch(err => {
+        console.error(`[Playback] Failed to start FFmpeg for ${saved.id}:`, err);
+        // Update status FAILED
+        this.playbackRepo.update(saved.id, {
+          recordingStatus: 'FAILED',
+          errorMessage: err.message,
+        } as any);
+      });
+
+    return saved;
+  }
+
+  // ==========================================================================
+  // STOP RECORDING FOR EVENT
+  // ==========================================================================
+  // Called by EventService when event ends
+  // Stop FFmpeg + Upload to R2
+  // ==========================================================================
+  async stopRecordingForEvent(eventId: string): Promise<Playback> {
+    console.log(`[Playback] Stopping recording for event ${eventId}...`);
+
+    // 1. Tìm playback đang RECORDING
+    const playback = await this.playbackRepo.findOne({
+      where: { 
+        event: { id: eventId },
+        recordingStatus: 'RECORDING'
+      },
+      relations: ['event', 'camera'],
+    });
+
+    if (!playback) {
+      throw new NotFoundException(`No active recording for event ${eventId}`);
+    }
+
+    // 2. Stop FFmpeg process (graceful SIGINT)
+    const ffmpegProcess = this.activeRecordings.get(playback.id);
+    if (ffmpegProcess) {
+      console.log(`[Playback] Sending SIGINT to FFmpeg process for ${playback.id}...`);
+      ffmpegProcess.kill('SIGINT');
+      this.activeRecordings.delete(playback.id);
+    } else {
+      console.warn(`[Playback] No FFmpeg process found for ${playback.id}`);
+    }
+
+    // 3. Wait một chút để FFmpeg close file
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // 4. Update status PROCESSING
+    await this.playbackRepo.update(playback.id, {
+      recordingStatus: 'PROCESSING',
+      endedAt: new Date(),
+    } as any);
+
+    // 5. Upload to R2 (async)
+    this.uploadToR2(playback.id, playback.localPath!)
+      .catch(err => {
+        console.error(`[Playback] Failed to upload ${playback.id} to R2:`, err);
+        this.playbackRepo.update(playback.id, {
+          recordingStatus: 'FAILED',
+          errorMessage: `Upload failed: ${err.message}`,
+        } as any);
+      });
+
+    return this.playbackRepo.findOne({ 
+      where: { id: playback.id },
+      relations: ['event', 'camera'],
     });
   }
 
   // ==========================================================================
-  // LIST PLAYBACK SESSIONS (với filter + pagination)
+  // FFMPEG RECORDING (INTERNAL)
+  // ==========================================================================
+  // Start FFmpeg to record RTSP stream to local file
+  // Returns: local file path
+  // ==========================================================================
+  private async startFFmpegRecording(playbackId: string, camera: Camera): Promise<string> {
+    // 1. Prepare temp directory - Cross-platform compatible
+    const defaultTempDir = process.platform === 'win32' 
+      ? join(process.env.TEMP || process.env.TMP || 'C:\\Windows\\Temp', 'playbacks')
+      : '/tmp/playbacks';
+    
+    const tempDir = process.env.RECORD_DIR || defaultTempDir;
+    
+    console.log(`[FFmpeg] Using temp directory: ${tempDir} (platform: ${process.platform})`);
+    
+    if (!existsSync(tempDir)) {
+      console.log(`[FFmpeg] Creating temp directory: ${tempDir}`);
+      mkdirSync(tempDir, { recursive: true });
+    }
+
+    // 2. Generate filename
+    const timestamp = Date.now();
+    const filename = `playback_${playbackId}_${timestamp}.mp4`;
+    const localPath = join(tempDir, filename);
+
+    // 3. RTSP URL
+    const rtspUrl = camera.rtspUrl;
+    if (!rtspUrl) {
+      throw new Error(`Camera ${camera.id} has no rtspUrl`);
+    }
+
+    console.log(`[FFmpeg] Starting recording: ${rtspUrl} → ${localPath}`);
+
+    // 4. FFmpeg command
+    const args = [
+      '-rtsp_transport', 'tcp',
+      '-i', rtspUrl,
+      '-c:v', 'copy',           // Copy video (no transcode)
+      '-c:a', 'aac',            // Audio codec
+      '-f', 'mp4',              // MP4 format
+      '-movflags', '+faststart', // Web-optimized
+      '-y',                     // Overwrite
+      localPath,
+    ];
+
+    // 5. Spawn FFmpeg
+    const ffmpegPath = typeof ffmpegStatic === 'string' ? ffmpegStatic : (ffmpegStatic as any).path || 'ffmpeg';
+    const ffmpeg = spawn(ffmpegPath, args);
+
+    // 6. Store process
+    this.activeRecordings.set(playbackId, ffmpeg);
+
+    // 7. Log FFmpeg output
+    ffmpeg.stderr.on('data', (data: Buffer) => {
+      const log = data.toString().trim();
+      if (log.includes('frame=') || log.includes('speed=')) {
+        // Progress log (optional: parse và update progress)
+        console.log(`[FFmpeg ${playbackId}] ${log}`);
+      }
+    });
+
+    ffmpeg.on('error', (err: Error) => {
+      console.error(`[FFmpeg ${playbackId}] Process error:`, err);
+      this.activeRecordings.delete(playbackId);
+    });
+
+    ffmpeg.on('close', (code: number) => {
+      console.log(`[FFmpeg ${playbackId}] Process exited with code ${code}`);
+      this.activeRecordings.delete(playbackId);
+    });
+
+    // 8. Return local path immediately (FFmpeg runs in background)
+    return localPath;
+  }
+
+  // ==========================================================================
+  // UPLOAD TO R2 (INTERNAL)
+  // ==========================================================================
+  // Upload recorded video to R2, update playback record
+  // ==========================================================================
+  private async uploadToR2(playbackId: string, localPath: string): Promise<void> {
+    console.log(`[Playback] Uploading ${playbackId} to R2...`);
+
+    // 1. Validate file exists
+    if (!existsSync(localPath)) {
+      throw new Error(`Local file not found: ${localPath}`);
+    }
+
+    // 2. Get file info
+    const stats = statSync(localPath);
+    const fileSizeBytes = stats.size;
+    const filename = localPath.split(/[/\\]/).pop(); // Cross-platform
+
+    // 3. Get video duration
+    const durationSec = await this.getVideoDuration(localPath);
+
+    // 4. Upload to R2 (StorageService.uploadFile tự đọc file)
+    const r2Key = `playbacks/${playbackId}/${filename}`;
+    console.log(`[Playback] R2 key: ${r2Key}`);
+
+    const videoUrl = await this.storageService.uploadFile(localPath, r2Key);
+
+    // 6. Update playback record
+    await this.playbackRepo.update(playbackId, {
+      recordingStatus: 'COMPLETED',
+      videoUrl,
+      fileSizeBytes,
+      durationSec,
+    } as any);
+
+    // 7. Delete local file
+    try {
+      unlinkSync(localPath);
+      console.log(`[Playback] Deleted local file: ${localPath}`);
+    } catch (err) {
+      console.warn(`[Playback] Failed to delete local file:`, err);
+    }
+
+    console.log(`[Playback] ✅ ${playbackId} uploaded successfully: ${videoUrl}`);
+  }
+
+  // ==========================================================================
+  // GET VIDEO DURATION (ffprobe)
+  // ==========================================================================
+  private async getVideoDuration(filePath: string): Promise<number> {
+    try {
+      const output = execSync(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`,
+        { encoding: 'utf-8' }
+      );
+      const duration = parseFloat(output.trim());
+      return Math.round(duration);
+    } catch (err) {
+      console.error('[Playback] Failed to get video duration:', err);
+      return 0;
+    }
+  }
+
+  // ==========================================================================
+  // LIST PLAYBACKS
   // ==========================================================================
   async list(filter: ListPlaybackDto = {}): Promise<{
     data: Playback[];
@@ -183,43 +327,17 @@ export class PlaybackService {
     totalPages: number;
   }> {
     const page = filter.page || 1;
-    const pageSize = Math.min(filter.pageSize || 20, 100); // Max 100
+    const pageSize = Math.min(filter.pageSize || 20, 100);
     const skip = (page - 1) * pageSize;
 
-    // ------------------------------------------------------------------------
-    // Build WHERE clause động
-    // ------------------------------------------------------------------------
     const where: any = {};
+    if (filter.eventId) where.event = { id: filter.eventId };
+    if (filter.cameraId) where.camera = { id: filter.cameraId };
+    if (filter.recordingStatus) where.recordingStatus = filter.recordingStatus;
 
-    if (filter.recordingId) {
-      where.recording = { id: filter.recordingId };
-    }
-
-    if (filter.cameraId) {
-      where.camera = { id: filter.cameraId };
-    }
-
-    if (filter.userId) {
-      where.userId = filter.userId;
-    }
-
-    if (filter.status) {
-      where.status = filter.status;
-    }
-
-    // Time range filter
-    if (filter.from || filter.to) {
-      const from = filter.from ? new Date(filter.from) : new Date(0);
-      const to = filter.to ? new Date(filter.to) : new Date();
-      where.createdAt = Between(from, to);
-    }
-
-    // ------------------------------------------------------------------------
-    // Query với pagination
-    // ------------------------------------------------------------------------
     const [data, total] = await this.playbackRepo.findAndCount({
       where,
-      relations: ['recording', 'camera'],
+      relations: ['event', 'camera'],
       order: { createdAt: 'DESC' },
       skip,
       take: pageSize,
@@ -235,216 +353,81 @@ export class PlaybackService {
   }
 
   // ==========================================================================
-  // GET PLAYBACK SESSION BY ID
+  // GET PLAYBACK BY ID
   // ==========================================================================
   async get(id: string): Promise<Playback> {
     const playback = await this.playbackRepo.findOne({
       where: { id },
-      relations: ['recording', 'camera'],
+      relations: ['event', 'camera'],
     });
-
     if (!playback) {
-      throw new NotFoundException(`Playback session ${id} not found`);
+      throw new NotFoundException(`Playback ${id} not found`);
     }
-
     return playback;
   }
 
   // ==========================================================================
-  // UPDATE PLAYBACK POSITION (seek/resume)
-  // ==========================================================================
-  // Client gọi API này để update vị trí hiện tại khi:
-  // - User tua video (seek)
-  // - Client định kỳ update position (heartbeat) để track watch duration
-  // ==========================================================================
-  async updatePosition(id: string, dto: UpdatePlaybackPositionDto): Promise<Playback> {
-    const playback = await this.get(id);
-
-    // Validate position không vượt quá duration của recording
-    if (dto.currentPositionSec < 0) {
-      throw new BadRequestException('Position cannot be negative');
-    }
-
-    if (playback.recording.durationSec && dto.currentPositionSec > playback.recording.durationSec) {
-      throw new BadRequestException(
-        `Position ${dto.currentPositionSec}s exceeds recording duration ${playback.recording.durationSec}s`
-      );
-    }
-
-    // Auto-update status thành PLAYING nếu đang PENDING
-    const updates: Partial<Playback> = {
-      currentPositionSec: dto.currentPositionSec,
-    };
-
-    if (playback.status === 'PENDING') {
-      updates.status = 'PLAYING';
-      updates.startedAt = new Date();
-    }
-
-    // Auto-complete nếu đã xem hết video (position >= 95% duration)
-    if (playback.recording.durationSec) {
-      const completionThreshold = playback.recording.durationSec * 0.95;
-      if (dto.currentPositionSec >= completionThreshold && playback.status === 'PLAYING') {
-        updates.status = 'COMPLETED';
-        updates.endedAt = new Date();
-      }
-    }
-
-    await this.playbackRepo.update(id, updates as any);
-    return this.get(id);
-  }
-
-  // ==========================================================================
-  // UPDATE PLAYBACK STATUS (play/pause/stop)
-  // ==========================================================================
-  async updateStatus(id: string, newStatus: 'PLAYING' | 'PAUSED' | 'STOPPED'): Promise<Playback> {
-    const playback = await this.get(id);
-
-    // Không cho thay đổi nếu đã ở trạng thái kết thúc / lỗi
-    if (['COMPLETED', 'FAILED'].includes(playback.status)) {
-      throw new BadRequestException(`Playback already finalized with status ${playback.status}`);
-    }
-
-    if (playback.status === newStatus) {
-      return playback; // Idempotent
-    }
-
-    const updates: Partial<Playback> = { status: newStatus };
-
-    if (newStatus === 'PLAYING' && !playback.startedAt) {
-      updates.startedAt = new Date();
-    }
-
-    if (newStatus === 'STOPPED') {
-      updates.endedAt = new Date();
-    }
-
-    await this.playbackRepo.update(id, updates as any);
-    return this.get(id);
-  }
-
-  // ==========================================================================
-  // DELETE PLAYBACK SESSION
+  // DELETE PLAYBACK
   // ==========================================================================
   async delete(id: string): Promise<{ ok: boolean; message: string }> {
     const playback = await this.get(id);
+
+    // Delete from R2 if exists
+    if (playback.videoUrl && this.storageService.isR2Url(playback.videoUrl)) {
+      try {
+        const key = this.storageService.extractR2Key(playback.videoUrl);
+        if (key) {
+          await this.storageService.deleteFile(key);
+          console.log(`[Playback] Deleted from R2: ${key}`);
+        }
+      } catch (err) {
+        console.error('[Playback] Failed to delete from R2:', err);
+      }
+    }
+
+    // Delete from database
     await this.playbackRepo.remove(playback);
+
     return {
       ok: true,
-      message: `Playback session ${id} deleted successfully`,
+      message: `Playback ${id} deleted successfully`,
     };
   }
 
   // ==========================================================================
-  // ANALYTICS: Thống kê playback
+  // MANUAL STOP RECORDING (if needed)
   // ==========================================================================
-  async getAnalytics(filter: {
-    recordingId?: string;
-    cameraId?: string;
-    from?: string;
-    to?: string;
-  }): Promise<{
-    totalSessions: number;
-    completedSessions: number;
-    averageWatchDuration: number;
-    completionRate: number;
-    uniqueUsers: number;
-  }> {
-    const where: any = {};
-
-    if (filter.recordingId) {
-      where.recording = { id: filter.recordingId };
+  async manualStopRecording(playbackId: string): Promise<Playback> {
+    const playback = await this.get(playbackId);
+    
+    if (playback.recordingStatus !== 'RECORDING') {
+      throw new BadRequestException(`Playback ${playbackId} is not recording (status: ${playback.recordingStatus})`);
     }
 
-    if (filter.cameraId) {
-      where.camera = { id: filter.cameraId };
+    // Stop FFmpeg
+    const ffmpegProcess = this.activeRecordings.get(playbackId);
+    if (ffmpegProcess) {
+      ffmpegProcess.kill('SIGINT');
+      this.activeRecordings.delete(playbackId);
     }
 
-    if (filter.from || filter.to) {
-      const from = filter.from ? new Date(filter.from) : new Date(0);
-      const to = filter.to ? new Date(filter.to) : new Date();
-      where.createdAt = Between(from, to);
+    // Update status
+    await this.playbackRepo.update(playbackId, {
+      recordingStatus: 'PROCESSING',
+      endedAt: new Date(),
+    } as any);
+
+    // Upload to R2
+    if (playback.localPath && existsSync(playback.localPath)) {
+      this.uploadToR2(playbackId, playback.localPath).catch(err => {
+        console.error(`[Playback] Upload failed:`, err);
+        this.playbackRepo.update(playbackId, {
+          recordingStatus: 'FAILED',
+          errorMessage: `Upload failed: ${err.message}`,
+        } as any);
+      });
     }
 
-    const sessions = await this.playbackRepo.find({ where });
-
-    const totalSessions = sessions.length;
-    const completedSessions = sessions.filter(s => s.status === 'COMPLETED').length;
-    const completionRate = totalSessions > 0 ? (completedSessions / totalSessions) * 100 : 0;
-
-    // Average watch duration (giây)
-    const watchDurations = sessions
-      .filter(s => s.startedAt && s.endedAt)
-      .map(s => (s.endedAt!.getTime() - s.startedAt!.getTime()) / 1000);
-    const averageWatchDuration = watchDurations.length > 0
-      ? watchDurations.reduce((sum, d) => sum + d, 0) / watchDurations.length
-      : 0;
-
-    // Unique users
-    const uniqueUserIds = new Set(sessions.filter(s => s.userId).map(s => s.userId));
-    const uniqueUsers = uniqueUserIds.size;
-
-    return {
-      totalSessions,
-      completedSessions,
-      averageWatchDuration: Math.round(averageWatchDuration),
-      completionRate: Math.round(completionRate * 100) / 100,
-      uniqueUsers,
-    };
-  }
-
-  // ==========================================================================
-  // HELPER: Generate stream URL
-  // ==========================================================================
-  // Tạo URL stream theo protocol
-  // 
-  // HLS: http://localhost:8080/playback/<id>/index.m3u8
-  // DASH: http://localhost:8080/playback/<id>/manifest.mpd
-  // HTTP_MP4: http://localhost:3000/playbacks/<id>/download
-  // RTSP: rtsp://localhost:8554/playback/<id>
-  // ==========================================================================
-  private generateStreamUrl(recording: Recording, protocol: PlaybackProtocol): string {
-    const baseUrl = process.env.STREAM_BASE_URL || 'http://localhost:8080';
-    const apiUrl = process.env.API_BASE_URL || 'http://localhost:3000';
-
-    switch (protocol) {
-      case 'HLS':
-        return `${baseUrl}/playback/${recording.id}/index.m3u8`;
-
-      case 'DASH':
-        return `${baseUrl}/playback/${recording.id}/manifest.mpd`;
-
-      case 'HTTP_MP4':
-        return `${apiUrl}/playbacks/${recording.id}/download`;
-
-      case 'RTSP':
-        return `rtsp://localhost:8554/playback/${recording.id}`;
-
-      default:
-        return `${baseUrl}/playback/${recording.id}/index.m3u8`;
-    }
-  }
-
-  // ==========================================================================
-  // HELPER: Extract client IP
-  // ==========================================================================
-  private extractClientIp(req?: Request): string | null {
-    if (!req) return null;
-
-    // Ưu tiên X-Forwarded-For (khi có proxy/load balancer)
-    const forwarded = req.headers['x-forwarded-for'];
-    if (forwarded) {
-      const ips = (forwarded as string).split(',');
-      return ips[0].trim();
-    }
-
-    // Fallback: X-Real-IP header
-    const realIp = req.headers['x-real-ip'];
-    if (realIp) {
-      return realIp as string;
-    }
-
-    // Fallback: req.ip
-    return req.ip || null;
+    return this.get(playbackId);
   }
 }

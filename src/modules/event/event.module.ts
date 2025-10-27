@@ -6,9 +6,13 @@ import { Event } from '../../typeorm/entities/event.entity';
 import { Camera } from '../../typeorm/entities/camera.entity';
 import { EventService } from './event.service';
 import { EventController } from './event.controller';
+import { PlaybackModule } from '../playback/playback.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Event, Camera])],
+  imports: [
+    TypeOrmModule.forFeature([Event, Camera]),
+    PlaybackModule, // Import PlaybackModule để inject PlaybackService
+  ],
   controllers: [EventController],
   providers: [EventService],
   exports: [EventService],

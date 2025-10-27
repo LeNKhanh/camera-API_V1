@@ -106,8 +106,8 @@ export class StreamService {
     
     // HLS URL format for MediaMTX: http://host:port/pathName/index.m3u8
     const hlsUrl = hlsPort === '80' || hlsPort === '443' 
-      ? `${httpScheme}://${mediamtxHost}/${pathName}/index.m3u8`
-      : `${httpScheme}://${mediamtxHost}:${hlsPort}/${pathName}/index.m3u8`;
+      ? `${httpScheme}://${mediamtxHost}/${pathName}`
+      : `${httpScheme}://${mediamtxHost}:${hlsPort}/${pathName}/`;
     
     // Web Player URL (HTML page with embedded player)
     const webPlayerUrl = hlsPort === '80' || hlsPort === '443'

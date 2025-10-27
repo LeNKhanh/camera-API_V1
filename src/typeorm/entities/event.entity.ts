@@ -17,7 +17,7 @@ export class Event {
   camera: Camera;
 
   // Channel của camera tại thời điểm event xảy ra
-  @Column({ name: 'nChannelID', type: 'int', default: 1 })
+  @Column({ name: 'nchannelid', type: 'int', default: 1 })
   nChannelID: number;
 
   @Column({ type: 'varchar', length: 50 })
@@ -26,7 +26,7 @@ export class Event {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
-  @Column({ name: 'ack', type: 'boolean', default: false })
+  @Column({ name: 'acknowledged', type: 'boolean', default: false })
   ack: boolean;
 
   @CreateDateColumn({ name: 'created_at', type: dateType as any })

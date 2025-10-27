@@ -81,4 +81,15 @@ export class EventController {
   removeByCamera(@Param('cameraId') cameraId: string) {
     return this.svc.deleteByCamera(cameraId);
   }
+
+  // ============================================================================
+  // END EVENT - STOP RECORDING
+  // ============================================================================
+  // Kết thúc event → dừng FFmpeg recording → upload R2
+  // ============================================================================
+  @Post(':id/end')
+  @Roles('ADMIN', 'OPERATOR')
+  endEvent(@Param('id') id: string) {
+    return this.svc.endEvent(id);
+  }
 }

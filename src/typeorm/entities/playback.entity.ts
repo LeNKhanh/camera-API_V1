@@ -1,18 +1,21 @@
 // ============================================================================
-// PLAYBACK ENTITY
+// PLAYBACK ENTITY - EVENT-TRIGGERED RECORDING
 // ============================================================================
-// Mục đích: Lưu trữ thông tin session playback video đã ghi (recordings)
+// Mục đích: Event-driven recording - Tự động record khi nhận event
 // 
-// Luồng nghiệp vụ:
-// 1. User request playback một recording cụ thể
-// 2. Hệ thống tạo playback session với URL stream (HLS/DASH)
-// 3. Track thời gian bắt đầu/kết thúc, người dùng, recording source
-// 4. Hỗ trợ tua (seek), pause/resume thông qua timestamps
+// Luồng nghiệp vụ MỚI:
+// 1. Khi Event được tạo (MOTION/ALERT) → Auto-start recording
+// 2. Playback record được tạo với status RECORDING
+// 3. FFmpeg record real-time từ camera RTSP
+// 4. Khi Event kết thúc → Stop recording + Upload R2
+// 5. Playback status → COMPLETED với video_url (public R2)
 // 
 // Quan hệ:
-// - playback (N) -> recording (1): Một recording có thể playback nhiều lần
+// - playback (N) -> event (1): Một event trigger một recording session
 // - playback (N) -> camera (1): Track camera nguồn (cascade delete)
-// - playback (N) -> user: Track user đã xem (optional, dùng audit)
+// 
+// Recording Status Lifecycle:
+// PENDING → RECORDING → PROCESSING → COMPLETED/FAILED
 // ============================================================================
 
 import { 
@@ -29,35 +32,23 @@ import {
 const dateType = process.env.NODE_ENV === 'test' ? 'datetime' : 'timestamptz';
 
 import { Camera } from './camera.entity';
-import { Recording } from './recording.entity';
+import { Event } from './event.entity';
 
 // ----------------------------------------------------------------------------
-// PLAYBACK STATUS
+// RECORDING STATUS
 // ----------------------------------------------------------------------------
-// PENDING    : Session vừa tạo, chưa bắt đầu stream
-// PLAYING    : Đang phát video
-// PAUSED     : Tạm dừng (có thể resume)
-// STOPPED    : User dừng hoặc hết video
-// COMPLETED  : Xem xong toàn bộ recording
-// FAILED     : Lỗi khi tạo stream hoặc file không tồn tại
+// PENDING    : Playback vừa tạo, chờ bắt đầu recording
+// RECORDING  : Đang record real-time từ camera
+// PROCESSING : Đã stop record, đang upload lên R2
+// COMPLETED  : Video đã upload xong, có video_url
+// FAILED     : Lỗi trong quá trình record/upload
 // ----------------------------------------------------------------------------
-export type PlaybackStatus = 
+export type RecordingStatus = 
   | 'PENDING' 
-  | 'PLAYING' 
-  | 'PAUSED' 
-  | 'STOPPED' 
+  | 'RECORDING' 
+  | 'PROCESSING'
   | 'COMPLETED' 
   | 'FAILED';
-
-// ----------------------------------------------------------------------------
-// PLAYBACK PROTOCOL
-// ----------------------------------------------------------------------------
-// HLS        : HTTP Live Streaming (m3u8) - tốt cho web/mobile
-// DASH       : Dynamic Adaptive Streaming over HTTP (mpd)
-// RTSP       : Real-Time Streaming Protocol (low latency, native)
-// HTTP_MP4   : Direct HTTP download/progressive (simple, no adaptive)
-// ----------------------------------------------------------------------------
-export type PlaybackProtocol = 'HLS' | 'DASH' | 'RTSP' | 'HTTP_MP4';
 
 // ============================================================================
 // PLAYBACK ENTITY
@@ -74,90 +65,79 @@ export class Playback {
   // FOREIGN KEYS
   // --------------------------------------------------------------------------
   
-  // Quan hệ với Recording (N-1): Playback phát từ file recording đã ghi
-  // CASCADE DELETE: Khi recording bị xóa -> xóa luôn playback sessions
-  @ManyToOne(() => Recording, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'recording_id' })
-  recording: Recording;
+  // Quan hệ với Event (N-1): Event trigger recording
+  // SET NULL: Khi event bị xóa -> playback vẫn giữ lại (orphan video)
+  @ManyToOne(() => Event, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'event_id' })
+  event?: Event | null;
 
-  // Quan hệ với Camera (N-1): Track camera nguồn (để filter, analytics)
+  // Quan hệ với Camera (N-1): Track camera nguồn
   // CASCADE DELETE: Khi camera bị xóa -> xóa luôn playback history
   @ManyToOne(() => Camera, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'camera_id' })
   camera: Camera;
 
   // --------------------------------------------------------------------------
-  // PLAYBACK SESSION INFO
+  // RECORDING INFO
   // --------------------------------------------------------------------------
   
-  // URL stream để client phát (HLS: .m3u8, DASH: .mpd, HTTP: .mp4)
-  // Ví dụ: "http://localhost:8080/playback/<id>/index.m3u8"
-  @Column({ name: 'stream_url', type: 'varchar', length: 500, nullable: true })
-  streamUrl?: string | null;
+  // Trạng thái recording (PENDING/RECORDING/PROCESSING/COMPLETED/FAILED)
+  @Column({ name: 'recording_status', type: 'varchar', length: 20, default: 'PENDING' })
+  recordingStatus: RecordingStatus;
 
-  // Protocol sử dụng (HLS/DASH/RTSP/HTTP_MP4)
-  @Column({ name: 'protocol', type: 'varchar', length: 20, default: 'HLS' })
-  protocol: PlaybackProtocol;
+  // URL public trên R2 (sau khi upload xong)
+  @Column({ name: 'video_url', type: 'varchar', length: 500, nullable: true })
+  videoUrl?: string | null;
 
-  // Trạng thái playback (PENDING/PLAYING/PAUSED/STOPPED/COMPLETED/FAILED)
-  @Column({ type: 'varchar', length: 20, default: 'PENDING' })
-  status: PlaybackStatus;
+  // Path local tạm (trước khi upload R2)
+  @Column({ name: 'local_path', type: 'varchar', length: 500, nullable: true })
+  localPath?: string | null;
 
   // --------------------------------------------------------------------------
-  // PLAYBACK POSITION & TIMING
+  // VIDEO METADATA
   // --------------------------------------------------------------------------
   
-  // Vị trí hiện tại trong video (giây) - cho tính năng resume/seek
-  // NULL = chưa bắt đầu, 0 = đầu video
-  @Column({ name: 'current_position_sec', type: 'int', nullable: true, default: 0 })
-  currentPositionSec?: number | null;
+  // Kích thước file (bytes)
+  @Column({ name: 'file_size_bytes', type: 'bigint', nullable: true })
+  fileSizeBytes?: number | null;
 
-  // Thời gian bắt đầu playback session
+  // Thời lượng video (giây)
+  @Column({ name: 'duration_sec', type: 'int', nullable: true })
+  durationSec?: number | null;
+
+  // Codec (H.264, H.265)
+  @Column({ name: 'codec', type: 'varchar', length: 20, nullable: true })
+  codec?: string | null;
+
+  // Resolution (1080p, 720p, etc.)
+  @Column({ name: 'resolution', type: 'varchar', length: 20, nullable: true })
+  resolution?: string | null;
+
+  // --------------------------------------------------------------------------
+  // TIMESTAMPS
+  // --------------------------------------------------------------------------
+  
+  // Thời gian bắt đầu recording
   @Column({ name: 'started_at', type: dateType as any, nullable: true })
   startedAt?: Date | null;
 
-  // Thời gian kết thúc playback (completed/stopped/failed)
+  // Thời gian kết thúc recording
   @Column({ name: 'ended_at', type: dateType as any, nullable: true })
   endedAt?: Date | null;
-
-  // --------------------------------------------------------------------------
-  // USER TRACKING (OPTIONAL)
-  // --------------------------------------------------------------------------
-  
-  // User ID đã xem (dùng cho audit, analytics) - nullable vì có thể không track
-  // Note: Không dùng FK vì users table không quan hệ trực tiếp playback
-  @Column({ name: 'user_id', type: 'uuid', nullable: true })
-  userId?: string | null;
-
-  // Username snapshot (để audit khi user bị xóa vẫn biết ai đã xem)
-  @Column({ name: 'username', type: 'varchar', length: 100, nullable: true })
-  username?: string | null;
-
-  // --------------------------------------------------------------------------
-  // ERROR TRACKING
-  // --------------------------------------------------------------------------
-  
-  // Lỗi nếu status = FAILED (file not found, transcoding error, etc.)
-  @Column({ name: 'error_message', type: 'varchar', length: 500, nullable: true })
-  errorMessage?: string | null;
-
-  // --------------------------------------------------------------------------
-  // METADATA & AUDIT
-  // --------------------------------------------------------------------------
-  
-  // User Agent của client (browser/app) - dùng cho analytics
-  @Column({ name: 'user_agent', type: 'varchar', length: 500, nullable: true })
-  userAgent?: string | null;
-
-  // IP address của client
-  @Column({ name: 'client_ip', type: 'varchar', length: 100, nullable: true })
-  clientIp?: string | null;
 
   // Thời gian tạo record
   @CreateDateColumn({ name: 'created_at', type: dateType as any })
   createdAt: Date;
 
-  // Thời gian cập nhật cuối (khi update position, status)
+  // Thời gian cập nhật cuối
   @UpdateDateColumn({ name: 'updated_at', type: dateType as any })
   updatedAt: Date;
+
+  // --------------------------------------------------------------------------
+  // ERROR TRACKING
+  // --------------------------------------------------------------------------
+  
+  // Message lỗi nếu status = FAILED
+  @Column({ name: 'error_message', type: 'varchar', length: 500, nullable: true })
+  errorMessage?: string | null;
 }
