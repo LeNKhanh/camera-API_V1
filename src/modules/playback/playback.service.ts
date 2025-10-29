@@ -28,7 +28,7 @@ import { Repository } from 'typeorm';
 import { spawn, ChildProcess } from 'child_process';
 import { existsSync, unlinkSync, mkdirSync, statSync, readFileSync } from 'fs';
 import { join } from 'path';
-import * as ffmpegStatic from 'ffmpeg-static';
+import ffmpegPath from 'ffmpeg-static';
 import { execSync } from 'child_process';
 
 import { Playback, RecordingStatus } from '../../typeorm/entities/playback.entity';
@@ -223,8 +223,13 @@ export class PlaybackService {
       localPath,
     ];
 
-    // 5. Spawn FFmpeg
-    const ffmpegPath = typeof ffmpegStatic === 'string' ? ffmpegStatic : (ffmpegStatic as any).path || 'ffmpeg';
+    // 5. Spawn FFmpeg - Use ffmpeg-static binary path
+    // ffmpegPath is the absolute path to the ffmpeg binary from ffmpeg-static package
+    if (!ffmpegPath) {
+      throw new Error('FFmpeg binary not found. Ensure ffmpeg-static is installed.');
+    }
+    
+    console.log(`[FFmpeg] Using FFmpeg binary: ${ffmpegPath}`);
     const ffmpeg = spawn(ffmpegPath, args);
 
     // 6. Store process
@@ -300,16 +305,39 @@ export class PlaybackService {
   }
 
   // ==========================================================================
-  // GET VIDEO DURATION (ffprobe)
+  // GET VIDEO DURATION (using FFmpeg instead of ffprobe)
   // ==========================================================================
   private async getVideoDuration(filePath: string): Promise<number> {
     try {
-      const output = execSync(
-        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`,
-        { encoding: 'utf-8' }
-      );
-      const duration = parseFloat(output.trim());
-      return Math.round(duration);
+      if (!ffmpegPath) {
+        console.warn('[Playback] FFmpeg not available, cannot get duration');
+        return 0;
+      }
+      
+      // Use FFmpeg to get file info (it outputs to stderr)
+      // We run ffmpeg -i and capture stderr which contains Duration info
+      const { execSync } = require('child_process');
+      let output = '';
+      try {
+        execSync(`"${ffmpegPath}" -i "${filePath}"`, { encoding: 'utf-8' });
+      } catch (err: any) {
+        // FFmpeg outputs info to stderr, which causes execSync to throw
+        // but err.stderr contains the info we need
+        output = err.stderr || err.stdout || '';
+      }
+      
+      // Parse: Duration: 00:01:23.45, start: 0.000000, bitrate: 1234 kb/s
+      const match = output.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+      if (match) {
+        const hours = parseInt(match[1]);
+        const minutes = parseInt(match[2]);
+        const seconds = parseFloat(match[3]);
+        const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+        return Math.round(totalSeconds);
+      }
+      
+      console.warn('[Playback] Could not parse duration from FFmpeg output');
+      return 0;
     } catch (err) {
       console.error('[Playback] Failed to get video duration:', err);
       return 0;
