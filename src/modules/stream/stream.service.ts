@@ -111,8 +111,8 @@ export class StreamService {
     
     // Web Player URL (HTML page with embedded player)
     const webPlayerUrl = hlsPort === '80' || hlsPort === '443'
-      ? `${httpScheme}://${mediamtxHost}/${pathName}`
-      : `${httpScheme}://${mediamtxHost}:${hlsPort}/${pathName}`;
+      ? `${httpScheme}://${mediamtxHost}/${pathName}/index.m3u8`
+      : `${httpScheme}://${mediamtxHost}:${hlsPort}/${pathName}/index.m3u8`;
     
     const webrtcUrl = webrtcPort === '80' || webrtcPort === '443'
       ? `${httpScheme}://${mediamtxHost}/${pathName}/whep`
