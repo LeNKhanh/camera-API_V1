@@ -24,7 +24,7 @@
 
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Between, MoreThanOrEqual, LessThanOrEqual } from 'typeorm';
 import { spawn, ChildProcess } from 'child_process';
 import { existsSync, unlinkSync, mkdirSync, statSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -46,6 +46,8 @@ export interface ListPlaybackDto {
   eventId?: string;
   cameraId?: string;
   recordingStatus?: RecordingStatus;
+  startedFrom?: string; // ISO 8601: filter started_at >= startedFrom
+  startedTo?: string;   // ISO 8601: filter started_at <= startedTo
   page?: number;
   pageSize?: number;
 }
@@ -362,6 +364,15 @@ export class PlaybackService {
     if (filter.eventId) where.event = { id: filter.eventId };
     if (filter.cameraId) where.camera = { id: filter.cameraId };
     if (filter.recordingStatus) where.recordingStatus = filter.recordingStatus;
+
+    // Date range filter for started_at
+    if (filter.startedFrom && filter.startedTo) {
+      where.startedAt = Between(new Date(filter.startedFrom), new Date(filter.startedTo));
+    } else if (filter.startedFrom) {
+      where.startedAt = MoreThanOrEqual(new Date(filter.startedFrom));
+    } else if (filter.startedTo) {
+      where.startedAt = LessThanOrEqual(new Date(filter.startedTo));
+    }
 
     const [data, total] = await this.playbackRepo.findAndCount({
       where,

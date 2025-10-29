@@ -26,7 +26,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { IsEnum, IsInt, IsOptional, IsPositive, IsUUID, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsPositive, IsUUID, Min, IsDateString } from 'class-validator';
 
 import { PlaybackService } from './playback.service';
 import { JwtAuthGuard } from '../guards/jwt.guard';
@@ -55,6 +55,14 @@ class ListPlaybackQueryDto {
   recordingStatus?: RecordingStatus;
 
   @IsOptional()
+  @IsDateString()
+  startedFrom?: string; // ISO 8601 format: 2025-10-27T00:00:00Z
+
+  @IsOptional()
+  @IsDateString()
+  startedTo?: string; // ISO 8601 format: 2025-10-27T23:59:59Z
+
+  @IsOptional()
   @IsInt()
   @Min(1)
   page?: number;
@@ -76,7 +84,7 @@ export class PlaybackController {
   // ==========================================================================
   // LIST PLAYBACKS
   // ==========================================================================
-  // GET /playbacks?eventId=xxx&recordingStatus=COMPLETED
+  // GET /playbacks?eventId=xxx&recordingStatus=COMPLETED&startedFrom=2025-10-27T00:00:00Z&startedTo=2025-10-27T23:59:59Z
   // ==========================================================================
   @Get()
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
@@ -85,6 +93,8 @@ export class PlaybackController {
       eventId: query.eventId,
       cameraId: query.cameraId,
       recordingStatus: query.recordingStatus,
+      startedFrom: query.startedFrom,
+      startedTo: query.startedTo,
       page: query.page,
       pageSize: query.pageSize,
     });
