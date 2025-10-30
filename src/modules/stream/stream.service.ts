@@ -67,7 +67,7 @@ export class StreamService {
     };
   }
 
-  // ✨ NEW: Get MediaMTX proxy URL (hides camera IP and credentials)
+  // NEW: Get MediaMTX proxy URL (hides camera IP and credentials)
   async getProxyUrl(cameraId: string) {
     if (!cameraId) throw new NotFoundException('cameraId required');
     const cam = await this.camRepo.findOne({ where: { id: cameraId } });

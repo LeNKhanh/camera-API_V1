@@ -28,7 +28,7 @@ export class StreamController {
     return this.svc.getRtspUrl(cameraId);
   }
 
-  // ✨ NEW: Lấy RTSP URL qua MediaMTX Proxy (ẩn IP camera)
+  // NEW: Lấy RTSP URL qua MediaMTX Proxy (ẩn IP camera)
   @Get(':cameraId/proxy')
   @Roles('ADMIN', 'OPERATOR', 'VIEWER')
   getProxyUrl(@Param('cameraId') cameraId: string) {

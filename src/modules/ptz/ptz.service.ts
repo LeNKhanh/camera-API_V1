@@ -168,14 +168,14 @@ export class PtzService {
     console.log('│   - Speed:', speed);
     console.log('│   - Duration (ms):', durationMs || 'unlimited');
     console.log('│   - Command Code:', commandCodeMap[action]);
-    console.log('│ [PTZ DEBUG] Mode:', this.useOnvif ? '✅ ONVIF ENABLED' : '⚠️  MOCK MODE (ONVIF DISABLED)');
+    console.log('│ [PTZ DEBUG] Mode:', this.useOnvif ? 'ONVIF ENABLED' : 'MOCK MODE (ONVIF DISABLED)');
     if (this.useOnvif) {
-      console.log('│   📡 Sẽ gửi lệnh ONVIF thật tới camera');
-      console.log('│   🎥 Camera sẽ di chuyển vật lý!');
+      console.log('│   Sẽ gửi lệnh ONVIF thật tới camera');
+      console.log('│   Camera sẽ di chuyển vật lý!');
     } else {
-      console.log('│   ⚠️  IMPORTANT: Code chỉ giả lập (mock)');
-      console.log('│   ⚠️  Camera sẽ KHÔNG di chuyển thực tế!');
-      console.log('│   💡 Set PTZ_USE_ONVIF=1 để bật ONVIF');
+      console.log('│   IMPORTANT: Code chỉ giả lập (mock)');
+      console.log('│   Camera sẽ KHÔNG di chuyển thực tế!');
+      console.log('│   Set PTZ_USE_ONVIF=1 để bật ONVIF');
     }
     console.log('└─────────────────────────────────────────────────────────────');
     // === DEBUG LOGGING END ===
@@ -286,10 +286,10 @@ export class PtzService {
             cameraId
           );
           await OnvifPtzHelper.stop(onvifCam);
-          console.log('│ [PTZ ONVIF] ✅ STOP command sent successfully');
+          console.log('│ [PTZ ONVIF] STOP command sent successfully');
         } catch (error) {
           this.logger.error(`[PTZ ONVIF] STOP failed: ${error.message}`);
-          console.log('│ [PTZ ONVIF] ❌ STOP failed:', error.message);
+          console.log('│ [PTZ ONVIF] STOP failed:', error.message);
         }
       }
       console.log('└─────────────────────────────────────────────────────────────');
@@ -367,17 +367,17 @@ export class PtzService {
         // Handle preset commands
         if (action === 'PRESET_GOTO' && param2) {
           await OnvifPtzHelper.gotoPreset(onvifCam, String(param2));
-          console.log('│ [PTZ ONVIF] ✅ GotoPreset command sent');
+          console.log('│ [PTZ ONVIF] GotoPreset command sent');
         } else if (action === 'PRESET_SET') {
           const presetToken = await OnvifPtzHelper.setPreset(onvifCam, `Preset${param2 || 1}`, String(param2 || 1));
-          console.log('│ [PTZ ONVIF] ✅ SetPreset command sent, token:', presetToken);
+          console.log('│ [PTZ ONVIF] SetPreset command sent, token:', presetToken);
         } else if (action === 'PRESET_DELETE' && param2) {
           await OnvifPtzHelper.removePreset(onvifCam, String(param2));
-          console.log('│ [PTZ ONVIF] ✅ RemovePreset command sent');
+          console.log('│ [PTZ ONVIF] RemovePreset command sent');
         } else {
           // Smart movement (auto-detect capabilities and fallback)
           await OnvifPtzHelper.smartMove(onvifCam, cameraId, panNorm, tiltNorm, zoomNorm);
-          console.log('│ [PTZ ONVIF] ✅ PTZ command sent successfully');
+          console.log('│ [PTZ ONVIF] PTZ command sent successfully');
         }
         
         console.log('└─────────────────────────────────────────────────────────────');
@@ -439,12 +439,12 @@ export class PtzService {
           }
         } else {
           const errorText = await response.text();
-          console.log('│   ❌ HTTP error response:', errorText.substring(0, 200));
+          console.log('│   HTTP error response:', errorText.substring(0, 200));
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
       } catch (error) {
-        console.log('│   ❌ HTTP API call failed:', error.message);
+        console.log('│   HTTP API call failed:', error.message);
         this.logger.error(`[PTZ HTTP] Failed: ${error.message}`);
         
         if (error.response) {
@@ -477,7 +477,7 @@ export class PtzService {
     // Prune async (không chặn response)
     this.pruneLogs(cameraId).catch(() => {/* ignore prune errors */});
 
-    console.log(this.useOnvif ? '✅ [PTZ ONVIF] Command executed' : '✅ [PTZ DEBUG] Mock response returned');
+    console.log(this.useOnvif ? '[PTZ ONVIF] Command executed' : '[PTZ DEBUG] Mock response returned');
 
     return {
       ok: true,

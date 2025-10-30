@@ -303,7 +303,7 @@ export class PlaybackService {
       console.warn(`[Playback] Failed to delete local file:`, err);
     }
 
-    console.log(`[Playback] ✅ ${playbackId} uploaded successfully: ${videoUrl}`);
+    console.log(`[Playback] Uploaded successfully: ${videoUrl}`);
   }
 
   // ==========================================================================
