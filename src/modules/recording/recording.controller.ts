@@ -43,14 +43,14 @@ export class RecordingController {
 
   // Bắt đầu ghi từ một camera trong X giây
   @Post('start')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   start(@Body() dto: StartRecordingDto) {
     return this.svc.startRecording(dto.cameraId, dto.durationSec ?? 60, dto.strategy, dto.filename);
   }
 
   // Danh sách bản ghi theo camera
   @Get()
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   list(
     @Query('cameraId') cameraId?: string,
     @Query('status') status?: string,
@@ -62,21 +62,21 @@ export class RecordingController {
 
   // Trạng thái / chi tiết bản ghi
   @Get(':id')
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   get(@Param('id') id: string) {
     return this.svc.getRecording(id);
   }
 
   // Dừng bản ghi đang chạy
   @Put(':id/stop')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   stop(@Param('id') id: string) {
     return this.svc.stopRecording(id);
   }
 
   // Tải file mp4 (stream) – chỉ ADMIN/OPERATOR (viewer có thể tùy biến nếu muốn)
   @Get(':id/download')
-  @Roles('ADMIN','OPERATOR')
+  @Roles('ADMIN')
   async download(@Param('id') id: string, @Res() res: Response) {
     const rec = await this.svc.getRecording(id);
     if (!rec.storagePath) return res.status(404).json({ error: 'NO_FILE' });

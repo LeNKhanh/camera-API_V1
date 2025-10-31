@@ -87,7 +87,7 @@ export class PlaybackController {
   // GET /playbacks?eventId=xxx&recordingStatus=COMPLETED&startedFrom=2025-10-27T00:00:00Z&startedTo=2025-10-27T23:59:59Z
   // ==========================================================================
   @Get()
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   list(@Query() query: ListPlaybackQueryDto) {
     return this.svc.list({
       eventId: query.eventId,
@@ -106,7 +106,7 @@ export class PlaybackController {
   // GET /playbacks/:id
   // ==========================================================================
   @Get(':id')
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   get(@Param('id') id: string) {
     return this.svc.get(id);
   }
@@ -118,7 +118,7 @@ export class PlaybackController {
   // Xóa playback record + video trên R2
   // ==========================================================================
   @Delete(':id')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   remove(@Param('id') id: string) {
     return this.svc.delete(id);
   }
@@ -130,7 +130,7 @@ export class PlaybackController {
   // Dừng recording thủ công (nếu muốn dừng trước khi event end)
   // ==========================================================================
   @Post(':id/stop')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   manualStop(@Param('id') id: string) {
     return this.svc.manualStopRecording(id);
   }

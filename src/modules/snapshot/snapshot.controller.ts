@@ -44,14 +44,14 @@ export class SnapshotController {
 
   // Chụp một ảnh snapshot
   @Post('capture')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   capture(@Body() dto: SnapshotCaptureDto) {
     return this.svc.capture(dto.cameraId, dto.filename, dto.rtspUrl, dto.strategy);
   }
 
   // Chụp snapshot qua network SDK (endpoint riêng thay vì truyền strategy trong body)
   @Post('capture/network')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   captureNetwork(@Body() dto: SnapshotCaptureDto) {
     // Bỏ qua strategy client gửi, ép dùng SDK_NETWORK
     return this.svc.capture(dto.cameraId, dto.filename, dto.rtspUrl, 'SDK_NETWORK');
@@ -59,21 +59,21 @@ export class SnapshotController {
 
   // Danh sách snapshot theo camera
   @Get()
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   list(@Query() query: SnapshotQueryDto) {
     return this.svc.list(query.cameraId);
   }
 
   // Chi tiết
   @Get(':id')
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   get(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.svc.get(id);
   }
 
     // Xoá snapshot (ADMIN/OPERATOR) – xoá record + file (nếu còn trên disk)
     @Delete(':id')
-    @Roles('ADMIN', 'OPERATOR')
+    @Roles('ADMIN')
     remove(@Param('id', new ParseUUIDPipe()) id: string) {
       return this.svc.remove(id);
     }

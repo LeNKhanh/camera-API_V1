@@ -13,7 +13,7 @@ export class StreamController {
 
   // Lấy URL phát cho một camera (ví dụ HLS)
   @Get(':cameraId/url')
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   getUrl(
     @Param('cameraId') cameraId: string,
     @Query('protocol') protocol: 'HLS' | 'DASH' = 'HLS',
@@ -23,14 +23,14 @@ export class StreamController {
 
   // Lấy RTSP URL trực tiếp từ camera để test với VLC
   @Get(':cameraId/rtsp')
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   getRtspUrl(@Param('cameraId') cameraId: string) {
     return this.svc.getRtspUrl(cameraId);
   }
 
   // NEW: Lấy RTSP URL qua MediaMTX Proxy (ẩn IP camera)
   @Get(':cameraId/proxy')
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   getProxyUrl(@Param('cameraId') cameraId: string) {
     return this.svc.getProxyUrl(cameraId);
   }

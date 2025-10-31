@@ -66,14 +66,14 @@ export class CameraController {
 
   // Tạo camera (chỉ admin/operator)
   @Post()
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   create(@Body() dto: CreateCameraDto) {
     return this.cameraService.create(dto);
   }
 
   // Bulk create channels for one device: POST /cameras/bulk-channels { ipAddress, port, username, password, channels }
   @HttpPost('bulk-channels')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   createMultiple(@Body() dto: any) {
     // dto.channels: number of channels
     return this.cameraService.createMulti(dto);
@@ -81,7 +81,7 @@ export class CameraController {
 
   // Danh sách camera (filter optional: enabled=true|false, name chứa) – Dahua only
   @Get()
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   findAll(
     @Query('enabled') enabled?: string,
     @Query('name') name?: string,
@@ -133,14 +133,14 @@ export class CameraController {
 
   // Chi tiết camera
   @Get(':id')
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   findOne(@Param('id') id: string) {
     return this.cameraService.findOne(id);
   }
 
   // Sửa camera
   @Patch(':id')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   update(@Param('id') id: string, @Body() dto: UpdateCameraDto) {
     return this.cameraService.update(id, dto);
   }
@@ -154,7 +154,7 @@ export class CameraController {
 
   // Xác minh kết nối RTSP (ping nhanh) -> /cameras/:id/verify
   @Get(':id/verify')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   verify(@Param('id') id: string) {
     return this.cameraService.verify(id);
   }

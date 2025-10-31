@@ -29,20 +29,20 @@ export class PtzController {
   constructor(private readonly svc: PtzService) {}
 
   @Post()
-  @Roles('ADMIN','OPERATOR')
+  @Roles('ADMIN')
   move(@Param('id') id: string, @Body() dto: PtzCommandDto) {
     return this.svc.execute(id, dto.action, dto.speed, dto.durationMs, dto.param1, dto.param2, dto.param3);
   }
 
   @Get('status')
-  @Roles('ADMIN','OPERATOR','VIEWER')
+  @Roles('ADMIN')
   status(@Param('id') id: string) {
     return this.svc.status(id);
   }
 
   // Lấy lịch sử log PTZ gần nhất (giới hạn đã cấu hình trong service – PTZ_LOG_MAX)
   @Get('logs')
-  @Roles('ADMIN','OPERATOR','VIEWER')
+  @Roles('ADMIN')
   logs(@Param('id') id: string) {
     return this.svc.logs(id);
   }

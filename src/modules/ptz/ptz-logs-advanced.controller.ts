@@ -15,7 +15,7 @@ export class PtzLogsAdvancedController {
    * ILoginID: required camera identity (camera.id as current mapping)
    */
   @Get('advanced')
-  @Roles('ADMIN','OPERATOR','VIEWER')
+  @Roles('ADMIN')
   advanced(
     @Query('ILoginID') ILoginID?: string,
     @Query('nChannelID') nChannelID?: string,

@@ -11,7 +11,7 @@ export class PtzAdvancedController {
 
   // GET /ptz/logs/advanced?ILoginID=...&nChannelID=1&page=1&pageSize=20
   @Get('advanced')
-  @Roles('ADMIN','OPERATOR','VIEWER')
+  @Roles('ADMIN')
   advanced(
     @Query('ILoginID') ILoginID?: string,
     @Query('nChannelID') nChannelID?: string,

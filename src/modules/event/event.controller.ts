@@ -31,14 +31,14 @@ export class EventController {
 
   // Tạo sự kiện thủ công (ví dụ test); thực tế có thể sinh từ pipeline phân tích
   @Post()
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   create(@Body() dto: CreateEventDto) {
     return this.svc.create(dto);
   }
 
   // Danh sách
   @Get()
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   list(
     @Query('cameraId') cameraId?: string,
     @Query('nChannelID') nChannelID?: string,
@@ -49,35 +49,35 @@ export class EventController {
 
   // Chi tiết
   @Get(':id')
-  @Roles('ADMIN', 'OPERATOR', 'VIEWER')
+  @Roles('ADMIN')
   get(@Param('id') id: string) {
     return this.svc.get(id);
   }
 
   // Ack sự kiện
   @Put(':id/ack')
-  @Roles('ADMIN','OPERATOR')
+  @Roles('ADMIN')
   ack(@Param('id') id: string) {
     return this.svc.ack(id);
   }
 
   // Giả lập motion cho camera
   @Post('/simulate-motion/:cameraId')
-  @Roles('ADMIN','OPERATOR')
+  @Roles('ADMIN')
   simulate(@Param('cameraId') cameraId: string) {
     return this.svc.simulateMotion(cameraId);
   }
 
   // Xóa 1 event theo id
   @Delete(':id')
-  @Roles('ADMIN','OPERATOR')
+  @Roles('ADMIN')
   remove(@Param('id') id: string) {
     return this.svc.deleteOne(id);
   }
 
   // Xóa tất cả event của 1 camera
   @Delete('/by-camera/:cameraId')
-  @Roles('ADMIN','OPERATOR')
+  @Roles('ADMIN')
   removeByCamera(@Param('cameraId') cameraId: string) {
     return this.svc.deleteByCamera(cameraId);
   }
@@ -88,7 +88,7 @@ export class EventController {
   // Kết thúc event → dừng FFmpeg recording → upload R2
   // ============================================================================
   @Post(':id/end')
-  @Roles('ADMIN', 'OPERATOR')
+  @Roles('ADMIN')
   endEvent(@Param('id') id: string) {
     return this.svc.endEvent(id);
   }
