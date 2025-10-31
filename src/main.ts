@@ -12,7 +12,45 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // 2) Bật CORS để frontend khác domain/port gọi API
-  app.enableCors({ origin: true, credentials: true });
+  // Parse CORS origins from env (comma-separated) or use defaults
+  const corsOrigins = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
+    : [
+        'http://localhost:3000',
+        'http://localhost:3333',
+        'http://localhost:5173',
+        'https://watcher-fe-self.vercel.app',
+        'https://watcher-test.vercel.app',
+        'https://watcher-gateway.blocktrend.xyz',
+      ];
+
+  app.enableCors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, Postman, curl)
+      if (!origin) return callback(null, true);
+      
+      // Check if origin matches any allowed origin or regex pattern
+      const isAllowed = corsOrigins.some(allowedOrigin => {
+        if (allowedOrigin === '*') return true;
+        if (allowedOrigin.startsWith('/') && allowedOrigin.endsWith('/')) {
+          // Regex pattern (e.g., "/https:\/\/.*\.vercel\.app$/")
+          const regex = new RegExp(allowedOrigin.slice(1, -1));
+          return regex.test(origin);
+        }
+        return allowedOrigin === origin;
+      });
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.warn(`CORS blocked origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-refresh-token'],
+  });
 
   // 3) Parse cookie (nếu dùng refresh token lưu trong cookie)
   app.use(cookieParser());
