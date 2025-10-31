@@ -41,6 +41,8 @@ export class AuthService {
   // Xác thực đăng nhập và sinh JWT
   // Luồng: tìm user theo username -> so sánh bcrypt -> nếu đúng, ký JWT với payload {sub, username, role}
   async validateAndLogin(username: string, password: string): Promise<TokenPair> {
+    // If SSO is enabled, local username/password login is disabled
+    if (process.env.SSO_API_KEY) throw new ForbiddenException('SSO enabled - local login disabled');
     const user = await this.usersRepo.findOne({ where: { username } });
     if (!user) throw new UnauthorizedException('Invalid credentials');
     const ok = await bcrypt.compare(password, user.passwordHash);
@@ -49,6 +51,7 @@ export class AuthService {
   }
 
   private async issueTokenPair(user: User): Promise<TokenPair> {
+    if (process.env.SSO_API_KEY) throw new ForbiddenException('SSO enabled - token issuance disabled');
     const payload = { sub: user.id, username: user.username, role: user.role };
     const accessToken = this.jwtService.sign(payload); // JwtModule chứa expiresIn=2h
     // Refresh token đơn giản: random dựa trên salt + user id + time, sau đó hash lưu DB

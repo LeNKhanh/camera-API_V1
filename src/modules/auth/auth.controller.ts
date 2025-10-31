@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards, Req, Headers, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards, Req, Headers, UnauthorizedException, BadRequestException, NotImplementedException } from '@nestjs/common';
 import { IsIn, IsString, MinLength, IsNotEmpty, IsUUID, IsOptional } from 'class-validator';
 import { JwtAuthGuard } from '../guards/jwt.guard';
 import { RateLimitLoginGuard, RateLimitRefreshGuard } from '../../common/rate-limit.guard';
@@ -55,6 +55,10 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(RateLimitLoginGuard)
   async login(@Body() dto: LoginDto): Promise<any> {
+    // If SSO is enabled we don't generate tokens locally anymore
+    if (process.env.SSO_API_KEY) {
+      throw new NotImplementedException('SSO is enabled. Obtain access token from SSO provider and call APIs with Bearer token. Local login is disabled.');
+    }
     return this.authService.validateAndLogin(dto.username, dto.password);
   }
 
@@ -99,7 +103,8 @@ export class AuthController {
       });
     }
 
-    if (!userId) throw new UnauthorizedException('Missing userId (body userId hoặc Bearer JWT)');
+  if (process.env.SSO_API_KEY) throw new NotImplementedException('SSO enabled - refresh handled by SSO provider');
+  if (!userId) throw new UnauthorizedException('Missing userId (body userId hoặc Bearer JWT)');
     if (!refreshToken) throw new BadRequestException('Missing refreshToken (body/alias/header/cookie)');
     if (refreshToken.length < 20) throw new BadRequestException('refreshToken quá ngắn hoặc không hợp lệ');
     return this.authService.refresh(userId, refreshToken);
@@ -108,6 +113,9 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Body() dto: LogoutDto, @Headers('authorization') auth?: string): Promise<any> {
+    // In SSO mode, logout / token revocation is managed by SSO. Local logout is not applicable.
+    if (process.env.SSO_API_KEY) throw new NotImplementedException('SSO enabled - logout/revoke handled by SSO provider');
+
     let userId = dto.userId;
     if (!userId && auth?.startsWith('Bearer ')) {
       try {
