@@ -5,9 +5,13 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Camera } from '../../typeorm/entities/camera.entity';
 import { StreamService } from './stream.service';
 import { StreamController } from './stream.controller';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Camera])],
+  imports: [
+    TypeOrmModule.forFeature([Camera]),
+    AuthModule,
+  ],
   controllers: [StreamController],
   providers: [StreamService],
 })

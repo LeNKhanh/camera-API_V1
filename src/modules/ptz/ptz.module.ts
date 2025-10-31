@@ -8,9 +8,13 @@ import { PtzLog } from '../../typeorm/entities/ptz-log.entity';
 import { PtzService } from './ptz.service';
 import { PtzController } from './ptz.controller';
 import { PtzLogsAdvancedController } from './ptz-logs-advanced.controller';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Camera, PtzLog])],
+  imports: [
+    TypeOrmModule.forFeature([Camera, PtzLog]),
+    AuthModule,
+  ],
   providers: [PtzService],
   controllers: [PtzController, PtzLogsAdvancedController],
   exports: [PtzService],

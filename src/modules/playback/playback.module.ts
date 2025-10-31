@@ -29,6 +29,7 @@ import { Playback } from '../../typeorm/entities/playback.entity';
 import { Event } from '../../typeorm/entities/event.entity';
 import { Camera } from '../../typeorm/entities/camera.entity';
 import { StorageModule } from '../storage/storage.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { StorageModule } from '../storage/storage.module';
     TypeOrmModule.forFeature([Playback, Event, Camera]),
     // Import StorageModule để inject StorageService
     StorageModule,
+    AuthModule,
   ],
   controllers: [PlaybackController],
   providers: [PlaybackService],
