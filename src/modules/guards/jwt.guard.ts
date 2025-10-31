@@ -7,11 +7,17 @@
 
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import axios from 'axios';
+import { User, UserRole } from '../../typeorm/entities/user.entity';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-	constructor(private readonly jwtService: JwtService) {}
+	constructor(
+		private readonly jwtService: JwtService,
+		@InjectRepository(User) private readonly usersRepo: Repository<User>,
+	) {}
 
 	async canActivate(context: ExecutionContext): Promise<boolean> {
 		const req = context.switchToHttp().getRequest();
@@ -54,6 +60,10 @@ export class JwtAuthGuard implements CanActivate {
 				}
 
 				if (!claims || !claims.sub) throw new UnauthorizedException('SSO token missing sub claim');
+				
+				// Auto-provision user: ensure user exists in local DB (upsert by sub)
+				await this.ensureUserExists(claims.sub, claims.username || claims.name || claims.preferred_username || 'sso-user', claims.role || claims.roles);
+				
 				// Attach user to request: use sub as primary user id
 				req.user = { userId: claims.sub, username: claims.username || claims.name || '', role: claims.role || claims.roles || 'ADMIN', rawClaims: claims };
 				return true;
@@ -70,6 +80,42 @@ export class JwtAuthGuard implements CanActivate {
 			return true;
 		} catch (e) {
 			throw new UnauthorizedException('Invalid or expired token');
+		}
+	}
+
+	/**
+	 * Auto-provision: ensure user exists in DB with given sub as primary key.
+	 * If user doesn't exist, create one. If exists, optionally update username/role.
+	 */
+	private async ensureUserExists(sub: string, username: string, roleClaim?: any): Promise<void> {
+		let user = await this.usersRepo.findOne({ where: { id: sub } });
+		if (!user) {
+			// Determine role from SSO claims or default to ADMIN
+			let role: UserRole = 'ADMIN';
+			if (roleClaim) {
+				const roleStr = Array.isArray(roleClaim) ? roleClaim[0] : roleClaim;
+				if (roleStr === 'ADMIN' || roleStr === 'OPERATOR' || roleStr === 'VIEWER') {
+					role = roleStr as UserRole;
+				}
+			}
+			// Default SSO role from env
+			const defaultRole = (process.env.SSO_DEFAULT_ROLE || 'ADMIN') as UserRole;
+			if (!roleClaim) role = defaultRole;
+
+			// Create user with sub as id, no password (SSO users don't have local passwords)
+			user = this.usersRepo.create({
+				id: sub,
+				username,
+				passwordHash: '', // SSO users have no local password
+				role,
+			});
+			await this.usersRepo.save(user);
+		} else {
+			// Optionally update username if changed (or skip if you prefer immutable usernames)
+			// if (user.username !== username) {
+			//   user.username = username;
+			//   await this.usersRepo.save(user);
+			// }
 		}
 	}
 }

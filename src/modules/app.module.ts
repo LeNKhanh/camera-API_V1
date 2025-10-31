@@ -16,6 +16,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RolesGuard } from '../common/roles.guard';
 import { JwtStrategy } from './auth/jwt.strategy';
+import { JwtAuthGuard } from './guards/jwt.guard';
 
 import { User } from '../typeorm/entities/user.entity';
 import { Camera } from '../typeorm/entities/camera.entity';
@@ -74,6 +75,7 @@ import { Playback } from '../typeorm/entities/playback.entity';
 
     // 3) Các module nghiệp vụ
     AuthModule,
+    TypeOrmModule.forFeature([User]), // Provide User repository globally for JwtAuthGuard
     CameraModule,
     StreamModule,
     RecordingModule,
@@ -86,6 +88,7 @@ import { Playback } from '../typeorm/entities/playback.entity';
   providers: [
     AppService,
     JwtStrategy,
+    JwtAuthGuard, // Provide JwtAuthGuard globally
     // RolesGuard có thể gắn theo route; nếu muốn toàn cục, bật dòng dưới
     // { provide: APP_GUARD, useClass: RolesGuard },
   ],
