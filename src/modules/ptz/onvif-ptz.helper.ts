@@ -64,10 +64,10 @@ export class OnvifPtzHelper {
             if (ptzProfile.PTZConfiguration) {
               this.logger.debug(`[ONVIF] PTZ Node Token: ${ptzProfile.PTZConfiguration.nodeToken}`);
             } else {
-              this.logger.warn(`[ONVIF] ⚠️ Profile has no PTZ configuration!`);
+              this.logger.warn(`[ONVIF] Profile has no PTZ configuration!`);
             }
           } else {
-            this.logger.warn(`[ONVIF] ⚠️ No profiles found on camera`);
+            this.logger.warn(`[ONVIF] No profiles found on camera`);
           }
           
           // Cache connection

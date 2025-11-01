@@ -19,6 +19,8 @@ async function bootstrap() {
         'http://localhost:3000',
         'http://localhost:3333',
         'http://localhost:5173',
+        'http://localhost:5500',
+        'http://127.0.0.1:5500',
         'https://watcher-fe-self.vercel.app',
         'https://watcher-test.vercel.app',
         'https://watcher-gateway.blocktrend.xyz',
