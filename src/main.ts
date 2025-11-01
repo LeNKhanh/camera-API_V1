@@ -22,6 +22,7 @@ async function bootstrap() {
         'https://watcher-fe-self.vercel.app',
         'https://watcher-test.vercel.app',
         'https://watcher-gateway.blocktrend.xyz',
+        'https://camera-api.teknix.services',
       ];
 
   app.enableCors({
