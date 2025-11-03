@@ -297,8 +297,9 @@ export class PtzService {
           console.log('│ [PTZ HTTP] Calling STOP...');
           const channelIndex = nChannelID;
           
-          // Use "All" command to stop all PTZ movements (pan, tilt, zoom)
-          const stopUrl = `http://${cam.ipAddress}/cgi-bin/ptz.cgi?action=stop&channel=${channelIndex}&code=All&arg1=0&arg2=0&arg3=0`;
+          // Dahua API: action=stop doesn't require 'code' parameter
+          // It will stop all current PTZ movements
+          const stopUrl = `http://${cam.ipAddress}/cgi-bin/ptz.cgi?action=stop&channel=${channelIndex}`;
           
           console.log('│   Stop URL:', stopUrl);
           console.log('│   Auth:', `${cam.username}:****`);
