@@ -291,6 +291,35 @@ export class PtzService {
           this.logger.error(`[PTZ ONVIF] STOP failed: ${error.message}`);
           console.log('│ [PTZ ONVIF] STOP failed:', error.message);
         }
+      } else {
+        // === DAHUA HTTP STOP ===
+        try {
+          console.log('│ [PTZ HTTP] Calling STOP...');
+          const channelIndex = nChannelID;
+          
+          // Use "All" command to stop all PTZ movements (pan, tilt, zoom)
+          const stopUrl = `http://${cam.ipAddress}/cgi-bin/ptz.cgi?action=stop&channel=${channelIndex}&code=All&arg1=0&arg2=0&arg3=0`;
+          
+          console.log('│   Stop URL:', stopUrl);
+          console.log('│   Auth:', `${cam.username}:****`);
+          console.log('│   Channel:', channelIndex);
+          
+          const digestClient = new DigestAuthClient(cam.username, cam.password);
+          const response = await digestClient.fetch(stopUrl, { method: 'GET' });
+          
+          if (response.ok) {
+            const responseText = await response.text();
+            console.log('│   STOP command sent successfully!');
+            console.log('│   Response:', responseText.substring(0, 100));
+          } else {
+            const errorText = await response.text();
+            console.log('│   STOP HTTP error:', errorText.substring(0, 200));
+            this.logger.warn(`[PTZ HTTP] STOP returned ${response.status}: ${errorText}`);
+          }
+        } catch (error) {
+          this.logger.error(`[PTZ HTTP] STOP failed: ${error.message}`);
+          console.log('│ [PTZ HTTP] STOP failed:', error.message);
+        }
       }
       console.log('└─────────────────────────────────────────────────────────────');
       // === ONVIF STOP END ===
