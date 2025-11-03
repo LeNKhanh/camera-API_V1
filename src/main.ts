@@ -16,15 +16,13 @@ async function bootstrap() {
   const corsOrigins = process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
     : [
-        'http://localhost:3000',
-        'http://localhost:3333',
-        'http://localhost:5173',
-        'http://localhost:5500',
-        'http://127.0.0.1:5500',
+        '/^http:\\/\\/localhost:\\d+$/',  // Allow all localhost ports (development)
+        '/^http:\\/\\/127\\.0\\.0\\.1:\\d+$/',  // Allow all 127.0.0.1 ports
         'https://watcher-fe-self.vercel.app',
         'https://watcher-test.vercel.app',
         'https://watcher-gateway.blocktrend.xyz',
         'https://camera-api.teknix.services',
+        '/https:\\/\\/.*\\.vercel\\.app$/',  // Allow all Vercel deployments
       ];
 
   // Log CORS configuration on startup
