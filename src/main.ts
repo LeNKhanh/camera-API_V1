@@ -32,24 +32,46 @@ async function bootstrap() {
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, Postman, curl)
-      if (!origin) return callback(null, true);
+      if (!origin) {
+        console.log('[CORS] ✓ Request with no origin (allowed)');
+        return callback(null, true);
+      }
+      
+      console.log('[CORS] Checking origin:', origin);
       
       // Check if origin matches any allowed origin or regex pattern
-      const isAllowed = corsOrigins.some(allowedOrigin => {
-        if (allowedOrigin === '*') return true;
+      const isAllowed = corsOrigins.some((allowedOrigin, index) => {
+        if (allowedOrigin === '*') {
+          console.log(`[CORS]   [${index}] Wildcard match: *`);
+          return true;
+        }
+        
         if (allowedOrigin.startsWith('/') && allowedOrigin.endsWith('/')) {
           // Regex pattern (e.g., "/https:\/\/.*\.vercel\.app$/")
-          const regex = new RegExp(allowedOrigin.slice(1, -1));
-          return regex.test(origin);
+          try {
+            const regexStr = allowedOrigin.slice(1, -1);
+            const regex = new RegExp(regexStr);
+            const matches = regex.test(origin);
+            console.log(`[CORS]   [${index}] Regex: ${regexStr} → ${matches ? '✓ MATCH' : '✗ no match'}`);
+            return matches;
+          } catch (err) {
+            console.error(`[CORS]   [${index}] Invalid regex: ${allowedOrigin}`, err.message);
+            return false;
+          }
         }
-        return allowedOrigin === origin;
+        
+        const matches = allowedOrigin === origin;
+        console.log(`[CORS]   [${index}] Exact: "${allowedOrigin}" → ${matches ? '✓ MATCH' : '✗ no match'}`);
+        return matches;
       });
 
       if (isAllowed) {
+        console.log('[CORS] ✓ Origin ALLOWED');
         callback(null, true);
       } else {
-        console.warn(`[CORS] Blocked origin: ${origin}`);
-        console.warn(`[CORS] Allowed origins:`, corsOrigins);
+        console.warn('[CORS] ✗ Origin BLOCKED');
+        console.warn('[CORS] Blocked origin:', origin);
+        console.warn('[CORS] Allowed origins:', corsOrigins);
         // Return false instead of throwing error to prevent breaking error responses
         callback(null, false);
       }
