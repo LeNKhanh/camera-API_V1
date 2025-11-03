@@ -29,7 +29,11 @@ async function bootstrap() {
   console.log('[CORS] Configured origins:', corsOrigins);
   console.log('[CORS] Environment CORS_ORIGINS:', process.env.CORS_ORIGINS ? 'SET' : 'NOT SET (using defaults)');
 
-  app.enableCors({
+  // Only enable CORS if not handled by proxy/gateway
+  // Check if DISABLE_NEST_CORS is set (when gateway already handles CORS)
+  if (process.env.DISABLE_NEST_CORS !== '1') {
+    console.log('[CORS] NestJS CORS enabled');
+    app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, Postman, curl)
       if (!origin) {
@@ -80,6 +84,9 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-refresh-token'],
   });
+  } else {
+    console.log('[CORS] NestJS CORS disabled (handled by proxy/gateway)');
+  }
 
   // 3) Parse cookie (nếu dùng refresh token lưu trong cookie)
   app.use(cookieParser());
