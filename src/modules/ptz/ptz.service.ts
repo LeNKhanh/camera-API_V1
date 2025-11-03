@@ -272,6 +272,10 @@ export class PtzService {
     if (action === 'STOP') {
       const prev = this.active.get(cameraId);
       if (prev?.timeout) clearTimeout(prev.timeout);
+      
+      // Get last action to know which command to stop
+      const lastAction = prev?.action;
+      
       this.active.delete(cameraId);
 
       // === ONVIF STOP ===
@@ -297,9 +301,18 @@ export class PtzService {
           console.log('│ [PTZ HTTP] Calling STOP...');
           const channelIndex = nChannelID;
           
-          // Dahua API: action=stop doesn't require 'code' parameter
-          // It will stop all current PTZ movements
-          const stopUrl = `http://${cam.ipAddress}/cgi-bin/ptz.cgi?action=stop&channel=${channelIndex}`;
+          // Dahua API requires the 'code' parameter to match the command being stopped
+          // If we have the last action, use its Dahua command name
+          let stopUrl: string;
+          if (lastAction) {
+            const dahuaCommand = DahuaPtzCommandNames[lastAction] || 'Left';
+            stopUrl = `http://${cam.ipAddress}/cgi-bin/ptz.cgi?action=stop&channel=${channelIndex}&code=${dahuaCommand}&arg1=0&arg2=0&arg3=0`;
+            console.log('│   Last action:', lastAction, '→', dahuaCommand);
+          } else {
+            // Fallback: if no active movement, try stopping common movements
+            stopUrl = `http://${cam.ipAddress}/cgi-bin/ptz.cgi?action=stop&channel=${channelIndex}&code=Left&arg1=0&arg2=0&arg3=0`;
+            console.log('│   No active movement, using default code=Left');
+          }
           
           console.log('│   Stop URL:', stopUrl);
           console.log('│   Auth:', `${cam.username}:****`);
