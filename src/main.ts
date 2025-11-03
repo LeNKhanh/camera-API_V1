@@ -27,6 +27,10 @@ async function bootstrap() {
         'https://camera-api.teknix.services',
       ];
 
+  // Log CORS configuration on startup
+  console.log('[CORS] Configured origins:', corsOrigins);
+  console.log('[CORS] Environment CORS_ORIGINS:', process.env.CORS_ORIGINS ? 'SET' : 'NOT SET (using defaults)');
+
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, Postman, curl)
@@ -46,8 +50,10 @@ async function bootstrap() {
       if (isAllowed) {
         callback(null, true);
       } else {
-        console.warn(`CORS blocked origin: ${origin}`);
-        callback(new Error('Not allowed by CORS'));
+        console.warn(`[CORS] Blocked origin: ${origin}`);
+        console.warn(`[CORS] Allowed origins:`, corsOrigins);
+        // Return false instead of throwing error to prevent breaking error responses
+        callback(null, false);
       }
     },
     credentials: true,
