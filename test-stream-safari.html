@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Stream Test - Safari Compatible</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 25px;
+            font-size: 14px;
+        }
+
+        .browser-info {
+            padding: 10px 15px;
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+
+        .browser-info.safari {
+            background: #fff3e0;
+            border-left-color: #ff9800;
+        }
+
+        .url-input-group {
+            margin-bottom: 20px;
+        }
+
+        .url-input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .url-input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .url-input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #333;
+        }
+
+        .stat-value.status-idle { color: #6b7280; }
+        .stat-value.status-loading { color: #f59e0b; }
+        .stat-value.status-ready { color: #10b981; }
+        .stat-value.status-playing { color: #3b82f6; }
+        .stat-value.status-error { color: #ef4444; }
+
+        .error-message {
+            background: #fee2e2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .error-message.visible {
+            display: block;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .cors-help {
+            background: #fef3c7;
+            border: 1px solid #fde047;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 13px;
+        }
+
+        .cors-help h3 {
+            margin-bottom: 10px;
+            color: #92400e;
+        }
+
+        .cors-help code {
+            background: #fffbeb;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎥 Camera Stream Test</h1>
+        <p class="subtitle">MediaMTX HLS Stream Player - Safari & iOS Compatible</p>
+
+        <div class="browser-info" id="browserInfo">
+            <strong id="browserName">Detecting browser...</strong>
+            <div id="browserDetails"></div>
+        </div>
+
+        <div class="url-input-group">
+            <label for="streamUrl">Stream URL (HLS .m3u8)</label>
+            <input 
+                type="text" 
+                id="streamUrl" 
+                placeholder="https://proxy-camera.teknix.services/camera_be5729fe/index.m3u8"
+                value="https://proxy-camera.teknix.services/camera_be5729fe/index.m3u8"
+            >
+        </div>
+
+        <div class="video-container">
+            <video 
+                id="video" 
+                controls 
+                playsinline
+                webkit-playsinline
+                preload="auto"
+            ></video>
+        </div>
+
+        <div class="controls">
+            <button class="btn-primary" onclick="loadStream()">Load Stream</button>
+            <button class="btn-success" onclick="playVideo()">▶ Play</button>
+            <button class="btn-warning" onclick="pauseVideo()">⏸ Pause</button>
+            <button class="btn-danger" onclick="stopVideo()">⏹ Stop</button>
+            <button class="btn-secondary" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-label">Status</div>
+                <div class="stat-value status-idle" id="statusValue">Idle</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Player Type</div>
+                <div class="stat-value" id="playerType">Not loaded</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Quality</div>
+                <div class="stat-value" id="qualityValue">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Buffer</div>
+                <div class="stat-value" id="bufferValue">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Latency</div>
+                <div class="stat-value" id="latencyValue">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Duration</div>
+                <div class="stat-value" id="durationValue">—</div>
+            </div>
+        </div>
+
+        <div class="cors-help">
+            <h3>⚠️ Safari/iOS CORS Requirements:</h3>
+            <p>If stream doesn't load on Safari/iOS, MediaMTX needs CORS headers:</p>
+            <ul style="margin: 10px 0 10px 20px; line-height: 1.8;">
+                <li><code>Access-Control-Allow-Origin: *</code></li>
+                <li><code>Access-Control-Allow-Methods: GET, OPTIONS</code></li>
+                <li><code>Access-Control-Allow-Headers: Range</code></li>
+            </ul>
+            <p style="margin-top: 10px;">Add to <code>mediamtx.yml</code>:
+                <pre style="background: #fffbeb; padding: 10px; border-radius: 4px; margin-top: 5px; overflow-x: auto;">hlsServerHeaders:
+  Access-Control-Allow-Origin: "*"
+  Access-Control-Allow-Methods: "GET, OPTIONS"
+  Access-Control-Allow-Headers: "Range"</pre>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const urlInput = document.getElementById('streamUrl');
+        const statusValue = document.getElementById('statusValue');
+        const qualityValue = document.getElementById('qualityValue');
+        const bufferValue = document.getElementById('bufferValue');
+        const latencyValue = document.getElementById('latencyValue');
+        const durationValue = document.getElementById('durationValue');
+        const playerType = document.getElementById('playerType');
+        const errorMessage = document.getElementById('errorMessage');
+        const browserInfo = document.getElementById('browserInfo');
+        const browserName = document.getElementById('browserName');
+        const browserDetails = document.getElementById('browserDetails');
+
+        let hls = null;
+        let statsInterval = null;
+
+        // Detect browser
+        function detectBrowser() {
+            const ua = navigator.userAgent;
+            const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+            const isChrome = /chrome/i.test(ua) && !/edg/i.test(ua);
+            const isFirefox = /firefox/i.test(ua);
+            const isEdge = /edg/i.test(ua);
+            const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+            
+            let name = 'Unknown';
+            let details = '';
+            let className = '';
+            
+            if (isIOS) {
+                name = '📱 iOS Safari';
+                details = 'Using native HLS support (best for Apple devices)';
+                className = 'safari';
+            } else if (isSafari) {
+                name = '🍎 Safari';
+                details = 'Using native HLS support';
+                className = 'safari';
+            } else if (isChrome) {
+                name = '🌐 Chrome';
+                details = 'Using HLS.js for playback';
+            } else if (isFirefox) {
+                name = '🦊 Firefox';
+                details = 'Using HLS.js for playback';
+            } else if (isEdge) {
+                name = '🌊 Edge';
+                details = 'Using HLS.js for playback';
+            }
+            
+            browserName.textContent = name;
+            browserDetails.textContent = details;
+            browserInfo.className = 'browser-info ' + className;
+            
+            return { isSafari: isSafari || isIOS, name };
+        }
+
+        // Initialize
+        detectBrowser();
+
+        function updateStatus(message, status = 'idle') {
+            statusValue.textContent = message;
+            statusValue.className = 'stat-value status-' + status;
+        }
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('visible');
+        }
+
+        function hideError() {
+            errorMessage.classList.remove('visible');
+        }
+
+        function loadStream() {
+            const streamUrl = urlInput.value.trim();
+            
+            if (!streamUrl) {
+                showError('Please enter a stream URL');
+                return;
+            }
+
+            // Validate URL
+            try {
+                new URL(streamUrl);
+            } catch (e) {
+                showError('Invalid URL format');
+                return;
+            }
+
+            updateStatus('Loading...', 'loading');
+            hideError();
+
+            // Destroy existing HLS instance
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+
+            // Stop stats interval
+            if (statsInterval) {
+                clearInterval(statsInterval);
+            }
+
+            const browserDetect = detectBrowser();
+
+            // SAFARI/iOS: Use native HLS (MUST check first!)
+            if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                console.log('🍎 Using Safari native HLS support');
+                playerType.textContent = 'Native HLS (Safari)';
+                
+                video.src = streamUrl;
+                
+                video.addEventListener('loadedmetadata', function onLoaded() {
+                    updateStatus('Ready', 'ready');
+                    console.log('✅ Video metadata loaded');
+                    console.log('Resolution:', video.videoWidth, 'x', video.videoHeight);
+                    updateStats();
+                    
+                    // Auto-play
+                    video.play().then(() => {
+                        updateStatus('Playing', 'playing');
+                        console.log('▶️ Auto-play started');
+                    }).catch(e => {
+                        console.warn('Auto-play blocked:', e);
+                        showError('Click Play button to start (auto-play blocked)');
+                    });
+                    
+                    video.removeEventListener('loadedmetadata', onLoaded);
+                });
+                
+                video.addEventListener('error', function onError(e) {
+                    updateStatus('Error', 'error');
+                    const errorCode = video.error ? video.error.code : 'unknown';
+                    const errorMsg = video.error ? video.error.message : 'Unknown error';
+                    
+                    console.error('❌ Video error:', video.error);
+                    
+                    let helpText = '';
+                    if (errorCode === 2 || errorCode === 'MEDIA_ERR_NETWORK') {
+                        helpText = 'Network error - Check CORS headers! Safari requires:\n- Access-Control-Allow-Origin: *\n- Access-Control-Allow-Methods: GET, OPTIONS\n- Access-Control-Allow-Headers: Range';
+                    } else if (errorCode === 4 || errorCode === 'MEDIA_ERR_SRC_NOT_SUPPORTED') {
+                        helpText = 'Media format not supported or URL is incorrect';
+                    } else if (errorCode === 3 || errorCode === 'MEDIA_ERR_DECODE') {
+                        helpText = 'Media decoding error';
+                    }
+                    
+                    showError(`Safari Error ${errorCode}: ${errorMsg}\n\n${helpText}`);
+                    video.removeEventListener('error', onError);
+                });
+                
+                // Stats monitoring
+                video.addEventListener('playing', updateStats);
+                video.addEventListener('timeupdate', updateStats);
+                statsInterval = setInterval(updateStats, 1000);
+                
+            } 
+            // OTHER BROWSERS: Use HLS.js
+            else if (Hls.isSupported()) {
+                console.log('🌐 Using HLS.js');
+                playerType.textContent = 'HLS.js';
+                
+                hls = new Hls({
+                    debug: false,
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    backBufferLength: 90,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60,
+                    maxBufferSize: 60 * 1000 * 1000,
+                    maxBufferHole: 0.5,
+                });
+
+                hls.loadSource(streamUrl);
+                hls.attachMedia(video);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    updateStatus('Ready', 'ready');
+                    console.log('✅ HLS manifest parsed');
+                    
+                    video.play().then(() => {
+                        updateStatus('Playing', 'playing');
+                        console.log('▶️ Auto-play started');
+                    }).catch(e => {
+                        console.warn('Auto-play blocked:', e);
+                        showError('Click Play button to start');
+                    });
+                });
+
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    console.error('❌ HLS.js error:', data);
+                    
+                    if (data.fatal) {
+                        switch(data.type) {
+                            case Hls.ErrorTypes.NETWORK_ERROR:
+                                updateStatus('Network Error', 'error');
+                                showError(`Network error: ${data.details}\n\nPossible CORS issue. Check MediaMTX CORS headers.`);
+                                console.log('🔄 Attempting to recover...');
+                                hls.startLoad();
+                                break;
+                            case Hls.ErrorTypes.MEDIA_ERROR:
+                                updateStatus('Media Error', 'error');
+                                showError(`Media error: ${data.details}\n\nAttempting recovery...`);
+                                console.log('🔄 Attempting media recovery...');
+                                hls.recoverMediaError();
+                                break;
+                            default:
+                                updateStatus('Fatal Error', 'error');
+                                showError(`Fatal error: ${data.type} - ${data.details}`);
+                                hls.destroy();
+                                break;
+                        }
+                    }
+                });
+
+                hls.on(Hls.Events.FRAG_LOADED, updateStats);
+                statsInterval = setInterval(updateStats, 1000);
+                
+            } else {
+                showError('❌ HLS is not supported in this browser');
+                playerType.textContent = 'Not supported';
+            }
+        }
+
+        function updateStats() {
+            if (video.videoWidth && video.videoHeight) {
+                qualityValue.textContent = `${video.videoWidth}x${video.videoHeight}`;
+            }
+            
+            if (video.buffered.length > 0) {
+                const buffered = video.buffered.end(0) - video.currentTime;
+                bufferValue.textContent = buffered.toFixed(1) + 's';
+            }
+            
+            if (hls && hls.latency) {
+                latencyValue.textContent = Math.round(hls.latency) + 'ms';
+            } else if (video.currentTime > 0) {
+                latencyValue.textContent = '< 1s';
+            }
+            
+            if (video.duration && isFinite(video.duration)) {
+                const current = Math.floor(video.currentTime);
+                const total = Math.floor(video.duration);
+                durationValue.textContent = `${current}s / ${total}s`;
+            } else if (video.currentTime > 0) {
+                durationValue.textContent = 'Live';
+            }
+        }
+
+        function playVideo() {
+            hideError();
+            video.play().then(() => {
+                updateStatus('Playing', 'playing');
+            }).catch(e => {
+                showError('Play failed: ' + e.message);
+            });
+        }
+
+        function pauseVideo() {
+            video.pause();
+            updateStatus('Paused', 'warning');
+        }
+
+        function stopVideo() {
+            video.pause();
+            video.currentTime = 0;
+            updateStatus('Stopped', 'idle');
+            
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            
+            if (statsInterval) {
+                clearInterval(statsInterval);
+            }
+            
+            qualityValue.textContent = '—';
+            bufferValue.textContent = '—';
+            latencyValue.textContent = '—';
+            durationValue.textContent = '—';
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                video.requestFullscreen().catch(e => {
+                    showError('Fullscreen failed: ' + e.message);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // Auto-load on page load
+        window.addEventListener('load', function() {
+            console.log('🚀 Page loaded, ready to stream');
+            // Uncomment to auto-load stream:
+            // setTimeout(loadStream, 500);
+        });
+    </script>
+</body>
+</html>

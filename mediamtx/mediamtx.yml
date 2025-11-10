@@ -298,6 +298,16 @@ hlsServerCert: server.crt
 # Value of the Access-Control-Allow-Origin header provided in every HTTP response.
 # This allows to play the HLS stream from an external website.
 hlsAllowOrigin: '*'
+# Additional HTTP headers to include in every HTTP response.
+# IMPORTANT: Required for Safari/iOS CORS support!
+# Safari needs specific headers to load HLS streams cross-origin.
+hlsServerHeaders:
+  Access-Control-Allow-Origin: "*"
+  Access-Control-Allow-Methods: "GET, HEAD, OPTIONS"
+  Access-Control-Allow-Headers: "Range, Accept, Accept-Encoding, If-Range, If-Modified-Since"
+  Access-Control-Expose-Headers: "Content-Length, Content-Range, Date"
+  Access-Control-Max-Age: "3600"
+  Cache-Control: "no-cache"
 # List of IPs or CIDRs of proxies placed before the HLS server.
 # If the server receives a request from one of these entries, IP in logs
 # will be taken from the X-Forwarded-For header.
