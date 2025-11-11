@@ -250,7 +250,7 @@
             </div>
             
             <div class="video-container">
-                <video id="video" controls playsinline></video>
+                <video id="video" controls playsinline muted autoplay></video>
             </div>
             
             <div class="controls">
@@ -352,6 +352,28 @@
         function isSafari() {
             return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
         }
+        
+        // ⭐ Handle Page Visibility Change (prevent background pause)
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && video.paused && video.src) {
+                log('Tab visible again - resuming playback', 'info');
+                video.play().catch(err => {
+                    log(`Auto-resume failed: ${err.message}`, 'warning');
+                });
+            }
+        });
+        
+        // ⭐ Prevent pause attempts (force play)
+        video.addEventListener('pause', (e) => {
+            if (video.src && !video.ended) {
+                log('Pause detected - forcing resume', 'warning');
+                setTimeout(() => {
+                    video.play().catch(err => {
+                        log(`Force play failed: ${err.message}`, 'error');
+                    });
+                }, 100);
+            }
+        });
         
         // Load Stream
         function loadStream() {
