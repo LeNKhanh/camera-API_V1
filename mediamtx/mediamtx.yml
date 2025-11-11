@@ -322,34 +322,37 @@ hlsAlwaysRemux: yes
 # * mpegts - uses MPEG-TS segments, for maximum compatibility.
 # * fmp4 - uses fragmented MP4 segments, more efficient.
 # * lowLatency - uses Low-Latency HLS.
-# CHANGED: mpegts for MAXIMUM Safari compatibility (fmp4 still caused bufferAppendError)
+# CRITICAL: mpegts for MAXIMUM Safari compatibility
 # With large camera GOP (50-60s), mpegts is more stable than fmp4
+# If still getting bufferAppendError, camera GOP MUST be changed
 hlsVariant: mpegts
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
-# OPTIMIZED: Reduced to 3 for lower latency (was 10)
-# Fewer segments = less buffering = faster playback
-hlsSegmentCount: 3
+# CRITICAL: Increased to 5 to handle large camera GOP (50-60s segments)
+# With segments this large, need more segments available for playback stability
+hlsSegmentCount: 5
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
 # since the server changes the duration in order to include at least one IDR frame
 # in each segment.
-# OPTIMIZED: Reduced to 1s for lower latency (was 2s)
-# Shorter segments = less lag
-hlsSegmentDuration: 1s
+# CRITICAL: Set to 3s to better handle camera GOP (MediaMTX waits for keyframe)
+# Actual segments will still be 50-60s due to camera GOP, but this helps stability
+hlsSegmentDuration: 3s
 # Minimum duration of each part.
 # A player usually puts 3 parts in a buffer before reproducing the stream.
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# OPTIMIZED: Reduced to 200ms for lower latency (was 500ms)
-# Shorter parts = more responsive stream
-hlsPartDuration: 200ms
+# CRITICAL: Increased to 1s for stability with large camera GOP
+# Smaller values cause MediaMTX to adjust parts dynamically = iOS errors
+hlsPartDuration: 1s
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
-hlsSegmentMaxSize: 50M
+# CRITICAL: Increased to 100M to handle 50-60s segments from camera
+# Large GOP = large segments, need bigger limit
+hlsSegmentMaxSize: 100M
 # Directory in which to save segments, instead of keeping them in the RAM.
 # This decreases performance, since reading from disk is less performant than
 # reading from RAM, but allows to save RAM.
