@@ -268,4 +268,204 @@ export class StreamService {
       }
     }
   }
+
+  // NEW: Get stream debug information
+  async getStreamDebugInfo(cameraId: string) {
+    if (!cameraId) throw new NotFoundException('cameraId required');
+    const cam = await this.camRepo.findOne({ where: { id: cameraId } });
+    if (!cam) throw new NotFoundException('Camera not found');
+
+    const mediamtxHost = process.env.MEDIAMTX_HOST || 'localhost';
+    const mediamtxApiUrl = process.env.MEDIAMTX_API_URL || 'http://localhost:9997';
+    const pathId = cameraId.substring(0, 8);
+    const pathName = `camera_${pathId}`;
+
+    // Try to get MediaMTX path info
+    let mediamtxPathInfo: any = null;
+    let mediamtxError: string | null = null;
+    
+    try {
+      const checkUrl = `${mediamtxApiUrl}/v3/config/paths/get/${pathName}`;
+      const authHeader = 'Basic ' + Buffer.from('api_user:api_pass_2024').toString('base64');
+      const response = await axios.get(checkUrl, { 
+        headers: { 'Authorization': authHeader },
+        timeout: 5000,
+      });
+      mediamtxPathInfo = response.data;
+    } catch (error) {
+      mediamtxError = error.response?.data?.error || error.message || 'Failed to get MediaMTX path info';
+    }
+
+    // Get current MediaMTX configuration
+    const mediamtxConfig = {
+      host: mediamtxHost,
+      apiUrl: mediamtxApiUrl,
+      rtspPort: process.env.MEDIAMTX_RTSP_PORT || '8554',
+      hlsPort: process.env.MEDIAMTX_HLS_PORT || '8888',
+      webrtcPort: process.env.MEDIAMTX_WEBRTC_PORT || '8889',
+      useHttps: process.env.MEDIAMTX_USE_HTTPS === 'true',
+    };
+
+    return {
+      timestamp: new Date().toISOString(),
+      camera: {
+        id: cam.id,
+        name: cam.name,
+        ipAddress: cam.ipAddress,
+        rtspPort: cam.rtspPort,
+        onvifPort: cam.onvifPort,
+        channel: cam.channel,
+        vendor: cam.vendor,
+        codec: cam.codec,
+        resolution: cam.resolution,
+        enabled: cam.enabled,
+      },
+      rtspSource: {
+        url: this.buildRtspUrl(cam),
+        port: cam.rtspPort || 554,
+      },
+      mediamtx: {
+        config: mediamtxConfig,
+        pathName,
+        pathId,
+        pathInfo: mediamtxPathInfo,
+        pathError: mediamtxError,
+        registered: mediamtxPathInfo !== null,
+      },
+      urls: {
+        rtsp: `rtsp://${mediamtxHost}:${mediamtxConfig.rtspPort}/${pathName}`,
+        hls: `${mediamtxConfig.useHttps ? 'https' : 'http'}://${mediamtxHost}:${mediamtxConfig.hlsPort}/${pathName}/index.m3u8`,
+        webrtc: `${mediamtxConfig.useHttps ? 'https' : 'http'}://${mediamtxHost}:${mediamtxConfig.webrtcPort}/${pathName}/whep`,
+      },
+      troubleshooting: {
+        steps: [
+          '1. Check MediaMTX is running: docker ps | grep mediamtx',
+          '2. Check MediaMTX logs: docker logs mediamtx',
+          '3. Test RTSP directly: ffplay -rtsp_transport tcp rtsp://...',
+          '4. Check camera is reachable: ping ' + cam.ipAddress,
+          '5. Verify camera credentials are correct',
+          '6. Check MediaMTX config: hlsVariant should be "mpegts"',
+        ],
+        commonIssues: {
+          bufferAppendError: {
+            cause: 'Camera GOP too large (50-60s) or HLS variant incompatible',
+            solution: 'Change camera GOP to 1-2s OR ensure hlsVariant=mpegts in mediamtx.yml',
+            cameraGopCheck: 'Login to camera web UI → Video → Encode → GOP/I-Frame Interval',
+          },
+          connectionFailed: {
+            cause: 'MediaMTX cannot reach camera RTSP',
+            solution: 'Check camera IP, port, credentials, network connectivity',
+          },
+          quotaExceeded: {
+            cause: 'Browser buffer too large after long playback',
+            solution: 'Use test-stream-optimized.html with buffer management',
+          },
+        },
+      },
+    };
+  }
+
+  // NEW: Check stream health
+  async checkStreamHealth(cameraId: string) {
+    if (!cameraId) throw new NotFoundException('cameraId required');
+    const cam = await this.camRepo.findOne({ where: { id: cameraId } });
+    if (!cam) throw new NotFoundException('Camera not found');
+
+    const mediamtxApiUrl = process.env.MEDIAMTX_API_URL || 'http://localhost:9997';
+    const pathId = cameraId.substring(0, 8);
+    const pathName = `camera_${pathId}`;
+
+    const health = {
+      timestamp: new Date().toISOString(),
+      cameraId: cam.id,
+      cameraName: cam.name,
+      pathName,
+      checks: {
+        cameraEnabled: cam.enabled,
+        mediamtxRegistered: false,
+        mediamtxReachable: false,
+        streamActive: false,
+      },
+      errors: [] as string[],
+      warnings: [] as string[],
+      status: 'UNKNOWN',
+    };
+
+    // Check 1: Camera enabled
+    if (!cam.enabled) {
+      health.errors.push('Camera is disabled in database');
+    }
+
+    // Check 2: MediaMTX reachable
+    try {
+      const authHeader = 'Basic ' + Buffer.from('api_user:api_pass_2024').toString('base64');
+      await axios.get(`${mediamtxApiUrl}/v3/config/global/get`, {
+        headers: { 'Authorization': authHeader },
+        timeout: 3000,
+      });
+      health.checks.mediamtxReachable = true;
+    } catch (error) {
+      health.errors.push(`MediaMTX API not reachable: ${error.message}`);
+    }
+
+    // Check 3: Path registered
+    if (health.checks.mediamtxReachable) {
+      try {
+        const authHeader = 'Basic ' + Buffer.from('api_user:api_pass_2024').toString('base64');
+        const response = await axios.get(`${mediamtxApiUrl}/v3/config/paths/get/${pathName}`, {
+          headers: { 'Authorization': authHeader },
+          timeout: 3000,
+        });
+        health.checks.mediamtxRegistered = true;
+        
+        // Check source config
+        const pathConfig = response.data;
+        if (pathConfig.source !== this.buildRtspUrl(cam)) {
+          health.warnings.push('MediaMTX path source URL differs from camera RTSP URL');
+        }
+      } catch (error) {
+        health.errors.push(`Camera not registered in MediaMTX: ${error.message}`);
+        health.warnings.push('Try calling GET /streams/:cameraId/proxy to auto-register');
+      }
+    }
+
+    // Check 4: Stream active (has readers)
+    if (health.checks.mediamtxRegistered) {
+      try {
+        const authHeader = 'Basic ' + Buffer.from('api_user:api_pass_2024').toString('base64');
+        const response = await axios.get(`${mediamtxApiUrl}/v3/paths/list`, {
+          headers: { 'Authorization': authHeader },
+          timeout: 3000,
+        });
+        
+        const activePaths = response.data?.items || [];
+        const activePath = activePaths.find((p: any) => p.name === pathName);
+        
+        if (activePath) {
+          health.checks.streamActive = true;
+          health.warnings.push(`Stream has ${activePath.readers || 0} active readers`);
+        } else {
+          health.warnings.push('Stream registered but not active (no readers)');
+        }
+      } catch (error) {
+        health.warnings.push('Could not check stream active status');
+      }
+    }
+
+    // Overall status
+    if (health.errors.length === 0) {
+      if (health.checks.streamActive) {
+        health.status = 'HEALTHY';
+      } else if (health.checks.mediamtxRegistered) {
+        health.status = 'READY';
+      } else {
+        health.status = 'NOT_REGISTERED';
+      }
+    } else {
+      health.status = 'ERROR';
+    }
+
+    return health;
+  }
 }
+
