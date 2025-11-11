@@ -329,32 +329,31 @@ hlsVariant: mpegts
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
-# CRITICAL: Increased to 5 to handle large camera GOP (50-60s segments)
-# With segments this large, need more segments available for playback stability
-hlsSegmentCount: 5
+# OPTIMIZED: Set to 3 for low latency with camera GOP = 25 frames (1s keyframes)
+# With 1s segments, 3 segments = 3s DVR buffer (sufficient for stability)
+hlsSegmentCount: 3
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
 # since the server changes the duration in order to include at least one IDR frame
 # in each segment.
-# CRITICAL: Set to match camera GOP - since camera GOP is 50-60s, set segment duration high
-# This allows MediaMTX to wait for actual keyframes instead of forcing artificial segments
-hlsSegmentDuration: 60s
+# OPTIMIZED: Set to 1s to match camera GOP = 25 frames (1s keyframes at 25 FPS)
+# With proper camera GOP, segments are exactly 1s with stable keyframes
+hlsSegmentDuration: 1s
 # Minimum duration of each part.
 # A player usually puts 3 parts in a buffer before reproducing the stream.
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# CRITICAL FIX: Set to 10s to completely prevent dynamic adjustment
-# Camera GOP 50-60s means frames are very far apart
-# 10s gives MediaMTX enough window to find stable frame boundaries
-# This eliminates "part duration changed" warnings completely
-hlsPartDuration: 10s
+# OPTIMIZED: Set to 200ms for responsive streaming with camera GOP = 25 (1s keyframes)
+# With regular keyframes every 1s, 200ms parts are stable and provide low latency
+# No more "part duration changed" warnings with proper camera GOP
+hlsPartDuration: 200ms
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
-# CRITICAL: Increased to 100M to handle 50-60s segments from camera
-# Large GOP = large segments, need bigger limit
-hlsSegmentMaxSize: 100M
+# OPTIMIZED: Set to 50M - sufficient for 1s segments at high bitrate (2-3 Mbps)
+# Camera GOP fixed to 25 frames = 1s segments = smaller size requirement
+hlsSegmentMaxSize: 50M
 # Directory in which to save segments, instead of keeping them in the RAM.
 # This decreases performance, since reading from disk is less performant than
 # reading from RAM, but allows to save RAM.
