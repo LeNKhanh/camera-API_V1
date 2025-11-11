@@ -328,25 +328,26 @@ hlsVariant: fmp4
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
-# OPTIMIZED: Reduced to 3 for lower latency (was 10)
-# Fewer segments = less buffering = faster playback
-hlsSegmentCount: 3
+# CRITICAL: Set to 2 because camera GOP is very large (50-60s)
+# With 50s segments, 2 segments = 100s DVR buffer (enough for stability)
+hlsSegmentCount: 2
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
 # since the server changes the duration in order to include at least one IDR frame
 # in each segment.
-# OPTIMIZED: Reduced to 1s for lower latency (was 2s)
-# Shorter segments = less lag
-hlsSegmentDuration: 1s
+# CRITICAL FIX: Increased to 10s because camera GOP is ~50-60s (keyframe every 50-60s)
+# MediaMTX must wait for a keyframe, so actual duration = camera GOP interval
+# If camera GOP = 50s, segment will be 50s regardless of this setting
+hlsSegmentDuration: 10s
 # Minimum duration of each part.
 # A player usually puts 3 parts in a buffer before reproducing the stream.
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# OPTIMIZED: Reduced to 200ms for lower latency (was 500ms)
-# Shorter parts = more responsive stream
-hlsPartDuration: 200ms
+# CRITICAL: Increased to 2s because camera GOP is large
+# With 50-60s segments, parts must be proportionally larger for stability
+hlsPartDuration: 2s
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
 hlsSegmentMaxSize: 50M
