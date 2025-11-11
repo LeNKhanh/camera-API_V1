@@ -14,12 +14,15 @@ logDestinations: [stdout]
 logFile: mediamtx.log
 
 # Timeout of read operations.
-readTimeout: 20s
+# OPTIMIZED: Reduced to 10s for faster response (was 20s)
+readTimeout: 10s
 # Timeout of write operations.
-writeTimeout: 10s
+# OPTIMIZED: Reduced to 5s for faster response (was 10s)
+writeTimeout: 5s
 # Size of the queue of outgoing packets.
 # A higher value allows to increase throughput, a lower value allows to save RAM.
-writeQueueSize: 512
+# OPTIMIZED: Increased to 1024 for better throughput (was 512)
+writeQueueSize: 1024
 # Maximum size of outgoing UDP packets.
 # This can be decreased to avoid fragmentation on networks with a low UDP MTU.
 udpMaxPayloadSize: 1472
@@ -325,23 +328,25 @@ hlsVariant: fmp4
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
-# INCREASED: 10 segments for Safari (was 7) - reduces buffer errors
-hlsSegmentCount: 10
+# OPTIMIZED: Reduced to 3 for lower latency (was 10)
+# Fewer segments = less buffering = faster playback
+hlsSegmentCount: 3
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
 # since the server changes the duration in order to include at least one IDR frame
 # in each segment.
-# IMPORTANT: Increased to 2s for iOS/Safari stability (was 1s)
-hlsSegmentDuration: 2s
+# OPTIMIZED: Reduced to 1s for lower latency (was 2s)
+# Shorter segments = less lag
+hlsSegmentDuration: 1s
 # Minimum duration of each part.
 # A player usually puts 3 parts in a buffer before reproducing the stream.
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# IMPORTANT: Increased to 500ms for iOS/Safari stability (was 200ms)
-# iOS clients error when part duration varies - larger duration = more stable
-hlsPartDuration: 500ms
+# OPTIMIZED: Reduced to 200ms for lower latency (was 500ms)
+# Shorter parts = more responsive stream
+hlsPartDuration: 200ms
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
 hlsSegmentMaxSize: 50M
