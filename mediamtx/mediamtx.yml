@@ -329,30 +329,32 @@ hlsVariant: mpegts
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
-# OPTIMIZED: Set to 3 for low latency with camera GOP = 25 frames (1s keyframes)
-# With 1s segments, 3 segments = 3s DVR buffer (sufficient for stability)
-hlsSegmentCount: 3
+# STABLE CONFIG: Set to 4 for camera GOP = 50 (2s keyframes)
+# With 2s segments, 4 segments = 8s DVR buffer (sufficient for stability)
+hlsSegmentCount: 4
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
 # since the server changes the duration in order to include at least one IDR frame
 # in each segment.
-# OPTIMIZED: Set to 1s to match camera GOP = 25 frames (1s keyframes at 25 FPS)
-# With proper camera GOP, segments are exactly 1s with stable keyframes
-hlsSegmentDuration: 1s
+# STABLE CONFIG: Set to 2s to match camera GOP = 50 (2s keyframes at 25 FPS)
+# Camera GOP 50 frames = keyframe every 2 seconds
+# MediaMTX will create stable 2s segments aligned with keyframes
+hlsSegmentDuration: 2s
 # Minimum duration of each part.
 # A player usually puts 3 parts in a buffer before reproducing the stream.
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# CRITICAL: Increased to 500ms to ensure stability even with GOP 25
-# If 200ms still shows "part duration changed", 500ms provides more stability
-# Trade-off: Slightly higher latency but eliminates iOS warnings completely
-hlsPartDuration: 500ms
+# STABLE CONFIG: Set to 1s for camera GOP = 50 (2s segments)
+# With 2s segments, 1s parts (half-segment) provides stable boundaries
+# Prevents "part duration changed" warnings on iOS/Safari
+hlsPartDuration: 1s
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
-# OPTIMIZED: Set to 50M - sufficient for 1s segments at high bitrate (2-3 Mbps)
-# Camera GOP fixed to 25 frames = 1s segments = smaller size requirement
+# STABLE CONFIG: Set to 60M for 2s segments at high bitrate
+# Camera GOP 50 = 2s segments = need larger segment size limit
+hlsSegmentMaxSize: 60M
 hlsSegmentMaxSize: 50M
 # Directory in which to save segments, instead of keeping them in the RAM.
 # This decreases performance, since reading from disk is less performant than
