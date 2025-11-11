@@ -329,9 +329,11 @@ hlsVariant: mpegts
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
-# STABLE CONFIG: Set to 4 for camera GOP = 50 (2s keyframes)
-# With 2s segments, 4 segments = 8s DVR buffer (sufficient for stability)
-hlsSegmentCount: 4
+# CRITICAL: Increased to 10 for stable background playback
+# With 2s segments, 10 segments = 20s DVR buffer
+# Prevents 404 errors when tab backgrounded or network slow
+# Trade-off: ~20MB more RAM (acceptable for 2s@1440p segments)
+hlsSegmentCount: 10
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
