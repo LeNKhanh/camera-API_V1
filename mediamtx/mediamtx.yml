@@ -345,9 +345,11 @@ hlsSegmentDuration: 3s
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# CRITICAL: Increased to 1s for stability with large camera GOP
-# Smaller values cause MediaMTX to adjust parts dynamically = iOS errors
-hlsPartDuration: 1s
+# CRITICAL FIX: Increased to 5s to prevent dynamic adjustment with large camera GOP
+# With camera GOP 50-60s, smaller values (1s, 200ms) cause MediaMTX to adjust parts
+# dynamically based on available frames, causing iOS "part duration changed" errors
+# 5s is large enough to be stable but small enough for reasonable responsiveness
+hlsPartDuration: 5s
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
 # CRITICAL: Increased to 100M to handle 50-60s segments from camera
