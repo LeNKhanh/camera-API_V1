@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLS Stream với Buffer Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .video-container {
+            position: relative;
+            background: #000;
+            padding-top: 56.25%; /* 16:9 aspect ratio */
+        }
+        
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .controls {
+            padding: 20px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 14px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .stats {
+            padding: 20px;
+            background: #f9fafb;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        
+        .stat-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #6b7280;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+        
+        .stat-value.good {
+            color: #10b981;
+        }
+        
+        .stat-value.warning {
+            color: #f59e0b;
+        }
+        
+        .stat-value.danger {
+            color: #ef4444;
+        }
+        
+        .logs {
+            padding: 20px;
+            background: #1f2937;
+            color: #e5e7eb;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        
+        .log-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid #374151;
+        }
+        
+        .log-time {
+            color: #9ca3af;
+        }
+        
+        .log-info {
+            color: #60a5fa;
+        }
+        
+        .log-success {
+            color: #34d399;
+        }
+        
+        .log-warning {
+            color: #fbbf24;
+        }
+        
+        .log-error {
+            color: #f87171;
+        }
+        
+        .alert {
+            padding: 15px;
+            margin: 20px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .alert.show {
+            display: block;
+        }
+        
+        .alert-info {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            color: #1e40af;
+        }
+        
+        .alert-warning {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            color: #92400e;
+        }
+        
+        .alert-success {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+            color: #065f46;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>🎥 HLS Stream với Buffer Management</h1>
+                <p>Optimized cho stream dài hạn - Tự động xóa buffer cũ</p>
+            </div>
+            
+            <div class="video-container">
+                <video id="video" controls playsinline></video>
+            </div>
+            
+            <div class="controls">
+                <div class="input-group">
+                    <label for="streamUrl">Stream URL (HLS m3u8)</label>
+                    <input 
+                        type="text" 
+                        id="streamUrl" 
+                        placeholder="https://proxy-camera.teknix.services/camera_name/index.m3u8"
+                        value="https://proxy-camera.teknix.services/camera_be5729fe/index.m3u8"
+                    >
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn-primary" onclick="loadStream()">▶️ Load Stream</button>
+                    <button class="btn-danger" onclick="stopStream()">⏹️ Stop</button>
+                    <button class="btn-secondary" onclick="clearBuffer()">🗑️ Clear Buffer</button>
+                </div>
+            </div>
+            
+            <div class="stats">
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">Player Type</div>
+                        <div class="stat-value" id="playerType">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Buffer Size</div>
+                        <div class="stat-value" id="bufferSize">0s</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Latency</div>
+                        <div class="stat-value" id="latency">0ms</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Quality</div>
+                        <div class="stat-value" id="quality">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Buffered Range</div>
+                        <div class="stat-value" id="bufferedRange">0s</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Buffer Cleans</div>
+                        <div class="stat-value good" id="cleanCount">0</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="logs" id="logs">
+                <div class="log-entry">
+                    <span class="log-time">[Ready]</span>
+                    <span class="log-info">Chờ load stream...</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="alert alert-info" id="safariAlert">
+            <strong>ℹ️ Safari Detected:</strong> Sử dụng native HLS player cho hiệu suất tốt nhất.
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script>
+        const video = document.getElementById('video');
+        let hls = null;
+        let statsInterval = null;
+        let bufferCleanCount = 0;
+        
+        // Configuration
+        const CONFIG = {
+            MAX_BUFFER_LENGTH: 30,        // Giữ tối đa 30s buffer
+            MAX_MAX_BUFFER_LENGTH: 60,    // Giới hạn tuyệt đối 60s
+            BACK_BUFFER_LENGTH: 10,       // Xóa buffer cũ hơn 10s
+            MAX_BUFFER_SIZE: 60 * 1000 * 1000, // 60MB limit
+            BUFFER_CHECK_INTERVAL: 5000   // Check mỗi 5s
+        };
+        
+        // Logging
+        function log(message, type = 'info') {
+            const logsDiv = document.getElementById('logs');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `
+                <span class="log-time">[${time}]</span>
+                <span class="log-${type}">${message}</span>
+            `;
+            logsDiv.appendChild(entry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+            
+            // Keep only last 50 logs
+            if (logsDiv.children.length > 50) {
+                logsDiv.removeChild(logsDiv.firstChild);
+            }
+        }
+        
+        // Check Safari
+        function isSafari() {
+            return /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        }
+        
+        // Load Stream
+        function loadStream() {
+            const url = document.getElementById('streamUrl').value.trim();
+            
+            if (!url) {
+                alert('Vui lòng nhập Stream URL');
+                return;
+            }
+            
+            stopStream();
+            log(`Loading stream: ${url}`, 'info');
+            
+            // Safari native HLS
+            if (video.canPlayType('application/vnd.apple.mpegurl') && isSafari()) {
+                document.getElementById('safariAlert').classList.add('show');
+                document.getElementById('playerType').textContent = 'Safari Native';
+                document.getElementById('playerType').className = 'stat-value good';
+                
+                video.src = url;
+                video.addEventListener('loadedmetadata', () => {
+                    log('Safari native player loaded', 'success');
+                    video.play();
+                    startStatsMonitoring();
+                });
+                
+                video.addEventListener('error', (e) => {
+                    log(`Error: ${e.message || 'Unknown error'}`, 'error');
+                });
+            }
+            // HLS.js for other browsers
+            else if (Hls.isSupported()) {
+                document.getElementById('playerType').textContent = 'HLS.js';
+                document.getElementById('playerType').className = 'stat-value';
+                
+                hls = new Hls({
+                    debug: false,
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    
+                    // ⭐ CRITICAL: Buffer management config
+                    maxBufferLength: CONFIG.MAX_BUFFER_LENGTH,
+                    maxMaxBufferLength: CONFIG.MAX_MAX_BUFFER_LENGTH,
+                    backBufferLength: CONFIG.BACK_BUFFER_LENGTH,
+                    
+                    // Performance
+                    maxBufferSize: CONFIG.MAX_BUFFER_SIZE,
+                    maxBufferHole: 0.5,
+                    
+                    // Quality
+                    startLevel: -1, // Auto quality
+                    autoStartLoad: true,
+                    
+                    // Network
+                    manifestLoadingTimeOut: 10000,
+                    manifestLoadingMaxRetry: 3,
+                    levelLoadingTimeOut: 10000,
+                });
+                
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                
+                // Events
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    log('Manifest parsed, starting playback', 'success');
+                    video.play();
+                    startStatsMonitoring();
+                });
+                
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    handleHlsError(data);
+                });
+                
+                // ⭐ Buffer events
+                hls.on(Hls.Events.BUFFER_APPENDING, () => {
+                    checkBufferSize();
+                });
+                
+                hls.on(Hls.Events.BUFFER_CODECS, (event, data) => {
+                    log(`Codecs: ${data.video}, ${data.audio}`, 'info');
+                });
+                
+                hls.on(Hls.Events.BUFFER_FLUSHING, () => {
+                    bufferCleanCount++;
+                    updateCleanCount();
+                    log('Buffer flushed (automatic cleanup)', 'warning');
+                });
+                
+            } else {
+                log('HLS not supported in this browser', 'error');
+                alert('Trình duyệt không hỗ trợ HLS streaming');
+            }
+        }
+        
+        // ⭐ CRITICAL: Handle QuotaExceededError
+        function handleHlsError(data) {
+            if (data.fatal) {
+                switch (data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        log('Network error, trying to recover...', 'error');
+                        hls.startLoad();
+                        break;
+                        
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        log('Media error, trying to recover...', 'error');
+                        
+                        // ⭐ Handle QuotaExceededError
+                        if (data.details === 'bufferAppendError') {
+                            log('QuotaExceededError detected! Clearing old buffer...', 'warning');
+                            clearOldBuffer();
+                            hls.recoverMediaError();
+                        } else {
+                            hls.recoverMediaError();
+                        }
+                        break;
+                        
+                    default:
+                        log(`Fatal error: ${data.details}`, 'error');
+                        stopStream();
+                        break;
+                }
+            } else {
+                log(`Non-fatal error: ${data.details}`, 'warning');
+            }
+        }
+        
+        // ⭐ Check buffer size
+        function checkBufferSize() {
+            if (!video.buffered.length) return;
+            
+            const currentTime = video.currentTime;
+            const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+            const bufferLength = bufferedEnd - currentTime;
+            
+            // If buffer > 40s, warn and clean
+            if (bufferLength > 40) {
+                log(`Buffer too large: ${bufferLength.toFixed(1)}s - Cleaning...`, 'warning');
+                clearOldBuffer();
+            }
+        }
+        
+        // ⭐ Clear old buffer
+        function clearOldBuffer() {
+            if (!video.buffered.length || !hls) return;
+            
+            const currentTime = video.currentTime;
+            const bufferStart = video.buffered.start(0);
+            
+            // Remove buffer before (currentTime - BACK_BUFFER_LENGTH)
+            const removeEnd = Math.max(0, currentTime - CONFIG.BACK_BUFFER_LENGTH);
+            
+            if (removeEnd > bufferStart) {
+                try {
+                    // Get source buffer
+                    const mediaSource = hls.media?.mediaSource;
+                    if (mediaSource && mediaSource.sourceBuffers.length > 0) {
+                        const sourceBuffer = mediaSource.sourceBuffers[0];
+                        
+                        if (!sourceBuffer.updating) {
+                            sourceBuffer.remove(bufferStart, removeEnd);
+                            bufferCleanCount++;
+                            updateCleanCount();
+                            log(`Removed buffer: ${bufferStart.toFixed(1)}s - ${removeEnd.toFixed(1)}s`, 'success');
+                        }
+                    }
+                } catch (e) {
+                    log(`Buffer remove error: ${e.message}`, 'error');
+                }
+            }
+        }
+        
+        // Manual clear buffer
+        function clearBuffer() {
+            if (hls) {
+                log('Manual buffer clear requested', 'warning');
+                clearOldBuffer();
+                
+                // Force HLS.js internal buffer clean
+                if (hls.media) {
+                    hls.trigger(Hls.Events.BUFFER_FLUSHING, {
+                        startOffset: 0,
+                        endOffset: video.currentTime - 5
+                    });
+                }
+            }
+        }
+        
+        // Stop stream
+        function stopStream() {
+            if (statsInterval) {
+                clearInterval(statsInterval);
+                statsInterval = null;
+            }
+            
+            if (hls) {
+                hls.destroy();
+                hls = null;
+            }
+            
+            video.src = '';
+            video.load();
+            
+            bufferCleanCount = 0;
+            updateCleanCount();
+            log('Stream stopped', 'info');
+        }
+        
+        // Stats monitoring
+        function startStatsMonitoring() {
+            if (statsInterval) clearInterval(statsInterval);
+            
+            statsInterval = setInterval(() => {
+                updateStats();
+            }, 1000);
+        }
+        
+        function updateStats() {
+            // Buffer size
+            if (video.buffered.length > 0) {
+                const currentTime = video.currentTime;
+                const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                const bufferSize = bufferedEnd - currentTime;
+                
+                const bufferEl = document.getElementById('bufferSize');
+                bufferEl.textContent = bufferSize.toFixed(1) + 's';
+                
+                // Color code
+                if (bufferSize < 5) {
+                    bufferEl.className = 'stat-value danger';
+                } else if (bufferSize > 30) {
+                    bufferEl.className = 'stat-value warning';
+                } else {
+                    bufferEl.className = 'stat-value good';
+                }
+                
+                // Buffered range
+                const totalBuffered = bufferedEnd - video.buffered.start(0);
+                document.getElementById('bufferedRange').textContent = totalBuffered.toFixed(1) + 's';
+            }
+            
+            // Latency (estimate)
+            if (hls && hls.latency) {
+                document.getElementById('latency').textContent = Math.round(hls.latency * 1000) + 'ms';
+            }
+            
+            // Quality
+            if (hls && hls.levels.length > 0) {
+                const currentLevel = hls.currentLevel;
+                if (currentLevel >= 0) {
+                    const level = hls.levels[currentLevel];
+                    document.getElementById('quality').textContent = 
+                        `${level.width}x${level.height}`;
+                }
+            } else if (video.videoWidth) {
+                document.getElementById('quality').textContent = 
+                    `${video.videoWidth}x${video.videoHeight}`;
+            }
+        }
+        
+        function updateCleanCount() {
+            document.getElementById('cleanCount').textContent = bufferCleanCount;
+        }
+        
+        // Auto-load on page load (optional)
+        // window.addEventListener('load', loadStream);
+    </script>
+</body>
+</html>

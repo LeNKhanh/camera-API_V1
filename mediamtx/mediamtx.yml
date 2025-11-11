@@ -322,9 +322,9 @@ hlsAlwaysRemux: yes
 # * mpegts - uses MPEG-TS segments, for maximum compatibility.
 # * fmp4 - uses fragmented MP4 segments, more efficient.
 # * lowLatency - uses Low-Latency HLS.
-# CHANGED: fmp4 for better Safari compatibility (was lowLatency)
-# lowLatency can cause bufferAppendError in Safari
-hlsVariant: fmp4
+# CHANGED: mpegts for MAXIMUM Safari compatibility (fmp4 still caused bufferAppendError)
+# With large camera GOP (50-60s), mpegts is more stable than fmp4
+hlsVariant: mpegts
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
