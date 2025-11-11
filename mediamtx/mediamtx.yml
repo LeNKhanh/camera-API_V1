@@ -345,10 +345,10 @@ hlsSegmentDuration: 1s
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# OPTIMIZED: Set to 200ms for responsive streaming with camera GOP = 25 (1s keyframes)
-# With regular keyframes every 1s, 200ms parts are stable and provide low latency
-# No more "part duration changed" warnings with proper camera GOP
-hlsPartDuration: 200ms
+# CRITICAL: Increased to 500ms to ensure stability even with GOP 25
+# If 200ms still shows "part duration changed", 500ms provides more stability
+# Trade-off: Slightly higher latency but eliminates iOS warnings completely
+hlsPartDuration: 500ms
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
 # OPTIMIZED: Set to 50M - sufficient for 1s segments at high bitrate (2-3 Mbps)
