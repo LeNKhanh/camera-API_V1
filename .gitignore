@@ -4,3 +4,9 @@ dist/
 *.log
 .DS_Store
 coverage/
+
+# Environment files
+env.example
+
+# Documentation files
+*.md
