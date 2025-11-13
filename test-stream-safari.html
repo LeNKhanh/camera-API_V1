@@ -273,11 +273,11 @@
         </div>
 
         <div class="controls">
-            <button class="btn-primary" onclick="loadStream()">Load Stream</button>
-            <button class="btn-success" onclick="playVideo()">▶ Play</button>
-            <button class="btn-warning" onclick="pauseVideo()">⏸ Pause</button>
-            <button class="btn-danger" onclick="stopVideo()">⏹ Stop</button>
-            <button class="btn-secondary" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+            <button class="btn-primary" id="loadBtn">Load Stream</button>
+            <button class="btn-success" id="playBtn">▶ Play</button>
+            <button class="btn-warning" id="pauseBtn">⏸ Pause</button>
+            <button class="btn-danger" id="stopBtn">⏹ Stop</button>
+            <button class="btn-secondary" id="fullscreenBtn">⛶ Fullscreen</button>
         </div>
 
         <div class="error-message" id="errorMessage"></div>
@@ -621,6 +621,16 @@
         // Auto-load on page load
         window.addEventListener('load', function() {
             console.log('🚀 Page loaded, ready to stream');
+            
+            // Setup button event listeners
+            document.getElementById('loadBtn').addEventListener('click', loadStream);
+            document.getElementById('playBtn').addEventListener('click', playVideo);
+            document.getElementById('pauseBtn').addEventListener('click', pauseVideo);
+            document.getElementById('stopBtn').addEventListener('click', stopVideo);
+            document.getElementById('fullscreenBtn').addEventListener('click', toggleFullscreen);
+            
+            console.log('✅ Event listeners attached');
+            
             // Uncomment to auto-load stream:
             // setTimeout(loadStream, 500);
         });

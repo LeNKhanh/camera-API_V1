@@ -333,41 +333,43 @@ hlsVariant: mpegts
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
-# CRITICAL: Increased to 15 for buffer stall prevention
-# With 2s segments, 15 segments = 30s DVR buffer
-# Larger buffer prevents stalls when network fluctuates
-# Essential for stable HLS.js playback without interruptions
-hlsSegmentCount: 15
+# CRITICAL: Maximum buffer size to eliminate stalls
+# With 2s segments, 25 segments = 50s DVR buffer
+# Massive buffer to handle any network hiccups or player delays
+# Essential for completely stable HLS.js playback
+hlsSegmentCount: 25
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
 # since the server changes the duration in order to include at least one IDR frame
 # in each segment.
-# OPTIMIZED: Reduce to 1.5s for better buffer flow
-# Camera GOP=50 still allows 1.5s segments with occasional 2s
-# Smaller segments = more frequent updates = less buffer stalls
-# MediaMTX will adjust dynamically based on keyframes
-hlsSegmentDuration: 1.5s
+# STABLE: Return to 2s segments to match camera GOP=50 exactly
+# Camera GOP 50 frames = keyframe every 2 seconds at 25 FPS
+# Perfect alignment prevents MediaMTX dynamic adjustments
+# Consistent 2s segments = no timing variations = no stalls
+hlsSegmentDuration: 2s
 # Minimum duration of each part.
 # A player usually puts 3 parts in a buffer before reproducing the stream.
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# OPTIMIZED: Reduce to 500ms for smoother buffer flow
-# Smaller parts = more granular loading = less stall risk
-hlsPartDuration: 500ms
+# STABLE: Return to 1s parts aligned with 2s segments
+# With 2s segments, 1s parts (half-segment) provides perfect boundaries
+# Consistent timing prevents HLS.js buffer management issues
+hlsPartDuration: 1s
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
-# STABLE CONFIG: Set to 60M for 2s segments at high bitrate
-# Camera GOP 50 = 2s segments = need larger segment size limit
-hlsSegmentMaxSize: 60M
+# ANTI-STALL: Increase to 100M for large 2s segments without truncation
+# Prevents buffer stalls caused by segment size limits
+hlsSegmentMaxSize: 100M
 # Directory in which to save segments, instead of keeping them in the RAM.
 # This decreases performance, since reading from disk is less performant than
 # reading from RAM, but allows to save RAM.
 hlsDirectory: ''
 # The muxer will be closed when there are no
 # reader requests and this amount of time has passed.
-hlsMuxerCloseAfter: 60s
+# ANTI-STALL: Increase to 120s to keep connections longer
+hlsMuxerCloseAfter: 120s
 
 ###############################################
 # Global settings -> WebRTC server
