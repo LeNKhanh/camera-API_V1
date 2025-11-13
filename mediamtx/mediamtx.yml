@@ -14,11 +14,11 @@ logDestinations: [stdout]
 logFile: mediamtx.log
 
 # Timeout of read operations.
-# OPTIMIZED: Reduced to 10s for faster response (was 20s)
-readTimeout: 10s
+# ANTI-STALL: Increased to 15s to prevent buffer stalls
+readTimeout: 15s
 # Timeout of write operations.
-# OPTIMIZED: Reduced to 5s for faster response (was 10s)
-writeTimeout: 5s
+# ANTI-STALL: Increased to 10s for stable buffer flow
+writeTimeout: 10s
 # Size of the queue of outgoing packets.
 # A higher value allows to increase throughput, a lower value allows to save RAM.
 # OPTIMIZED: Increased to 1024 for better throughput (was 512)
@@ -318,7 +318,7 @@ hlsTrustedProxies: []
 # By default, HLS is generated only when requested by a user.
 # This option allows to generate it always, avoiding the delay between request and generation.
 hlsAlwaysRemux: yes
-# ⭐ SAFARI FIX: Video grid layout for Safari compatibility
+# SAFARI FIX: Video grid layout for Safari compatibility
 # Default 2x2 grid causes bufferAppendError in Safari/iOS
 # Use 16x16 grid for better Safari MSE compatibility
 hlsVideoGrid: 16x16
@@ -333,29 +333,29 @@ hlsVariant: mpegts
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
-# CRITICAL: Increased to 10 for stable background playback
-# With 2s segments, 10 segments = 20s DVR buffer
-# Prevents 404 errors when tab backgrounded or network slow
-# Trade-off: ~20MB more RAM (acceptable for 2s@1440p segments)
-hlsSegmentCount: 10
+# CRITICAL: Increased to 15 for buffer stall prevention
+# With 2s segments, 15 segments = 30s DVR buffer
+# Larger buffer prevents stalls when network fluctuates
+# Essential for stable HLS.js playback without interruptions
+hlsSegmentCount: 15
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
 # since the server changes the duration in order to include at least one IDR frame
 # in each segment.
-# STABLE CONFIG: Set to 2s to match camera GOP = 50 (2s keyframes at 25 FPS)
-# Camera GOP 50 frames = keyframe every 2 seconds
-# MediaMTX will create stable 2s segments aligned with keyframes
-hlsSegmentDuration: 2s
+# OPTIMIZED: Reduce to 1.5s for better buffer flow
+# Camera GOP=50 still allows 1.5s segments with occasional 2s
+# Smaller segments = more frequent updates = less buffer stalls
+# MediaMTX will adjust dynamically based on keyframes
+hlsSegmentDuration: 1.5s
 # Minimum duration of each part.
 # A player usually puts 3 parts in a buffer before reproducing the stream.
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# STABLE CONFIG: Set to 1s for camera GOP = 50 (2s segments)
-# With 2s segments, 1s parts (half-segment) provides stable boundaries
-# Prevents "part duration changed" warnings on iOS/Safari
-hlsPartDuration: 1s
+# OPTIMIZED: Reduce to 500ms for smoother buffer flow
+# Smaller parts = more granular loading = less stall risk
+hlsPartDuration: 500ms
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
 # STABLE CONFIG: Set to 60M for 2s segments at high bitrate
