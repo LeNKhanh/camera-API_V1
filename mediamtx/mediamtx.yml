@@ -318,6 +318,10 @@ hlsTrustedProxies: []
 # By default, HLS is generated only when requested by a user.
 # This option allows to generate it always, avoiding the delay between request and generation.
 hlsAlwaysRemux: yes
+# ⭐ SAFARI FIX: Video grid layout for Safari compatibility
+# Default 2x2 grid causes bufferAppendError in Safari/iOS
+# Use 16x16 grid for better Safari MSE compatibility
+hlsVideoGrid: 16x16
 # Variant of the HLS protocol to use. Available options are:
 # * mpegts - uses MPEG-TS segments, for maximum compatibility.
 # * fmp4 - uses fragmented MP4 segments, more efficient.
@@ -357,7 +361,6 @@ hlsPartDuration: 1s
 # STABLE CONFIG: Set to 60M for 2s segments at high bitrate
 # Camera GOP 50 = 2s segments = need larger segment size limit
 hlsSegmentMaxSize: 60M
-hlsSegmentMaxSize: 50M
 # Directory in which to save segments, instead of keeping them in the RAM.
 # This decreases performance, since reading from disk is less performant than
 # reading from RAM, but allows to save RAM.
