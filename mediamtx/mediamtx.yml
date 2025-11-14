@@ -333,43 +333,37 @@ hlsVariant: mpegts
 # Number of HLS segments to keep on the server.
 # Segments allow to seek through the stream.
 # Their number doesn't influence latency.
-# CRITICAL: Maximum buffer size to eliminate stalls
-# With 2s segments, 25 segments = 50s DVR buffer
-# Massive buffer to handle any network hiccups or player delays
-# Essential for completely stable HLS.js playback
-hlsSegmentCount: 25
+# STABLE CONFIG: Keep 12 segments (24s buffer) for Safari
+# Enough headroom to avoid 404/buffer stalls without huge latency
+hlsSegmentCount: 12
 # Minimum duration of each segment.
 # A player usually puts 3 segments in a buffer before reproducing the stream.
 # The final segment duration is also influenced by the interval between IDR frames,
 # since the server changes the duration in order to include at least one IDR frame
 # in each segment.
-# STABLE: Return to 2s segments to match camera GOP=50 exactly
-# Camera GOP 50 frames = keyframe every 2 seconds at 25 FPS
-# Perfect alignment prevents MediaMTX dynamic adjustments
-# Consistent 2s segments = no timing variations = no stalls
+# STABLE CONFIG: Match camera GOP 2s (50-frame keyframes)
+# Ensures every segment starts on an IDR frame (required by Safari)
 hlsSegmentDuration: 2s
 # Minimum duration of each part.
 # A player usually puts 3 parts in a buffer before reproducing the stream.
 # Parts are used in Low-Latency HLS in place of segments.
 # Part duration is influenced by the distance between video/audio samples
 # and is adjusted in order to produce segments with a similar duration.
-# STABLE: Return to 1s parts aligned with 2s segments
-# With 2s segments, 1s parts (half-segment) provides perfect boundaries
-# Consistent timing prevents HLS.js buffer management issues
+# Set parts to half of segment (1s) for deterministic timing
+# Prevents "part duration changed" warnings on iOS/Safari
 hlsPartDuration: 1s
 # Maximum size of each segment.
 # This prevents RAM exhaustion.
-# ANTI-STALL: Increase to 100M for large 2s segments without truncation
-# Prevents buffer stalls caused by segment size limits
-hlsSegmentMaxSize: 100M
+# STABLE CONFIG: Set to 60M for 2s segments at high bitrate
+# Camera GOP 50 = 2s segments = need larger segment size limit
+hlsSegmentMaxSize: 60M
 # Directory in which to save segments, instead of keeping them in the RAM.
 # This decreases performance, since reading from disk is less performant than
 # reading from RAM, but allows to save RAM.
 hlsDirectory: ''
 # The muxer will be closed when there are no
 # reader requests and this amount of time has passed.
-# ANTI-STALL: Increase to 120s to keep connections longer
-hlsMuxerCloseAfter: 120s
+hlsMuxerCloseAfter: 60s
 
 ###############################################
 # Global settings -> WebRTC server
