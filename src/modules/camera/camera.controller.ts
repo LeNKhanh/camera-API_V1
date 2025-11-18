@@ -16,6 +16,8 @@ import {
   Patch,
   Post,
   UseGuards,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
 import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { JwtAuthGuard } from '../guards/jwt.guard';
@@ -23,6 +25,7 @@ import { Roles } from '../../common/roles.decorator';
 import { RolesGuard } from '../../common/roles.guard';
 
 import { CameraService } from './camera.service';
+import { Response } from 'express';
 
 // DTO tạo/cập nhật camera
 class CreateCameraDto {
@@ -157,5 +160,18 @@ export class CameraController {
   @Roles('ADMIN')
   verify(@Param('id') id: string) {
     return this.cameraService.verify(id);
+  }
+
+  // Chụp snapshot hiện tại của camera
+  @Get(':id/snapshot')
+  @Roles('ADMIN')
+  async snapshot(@Param('id') id: string, @Res({ passthrough: true }) res: Response) {
+    const buffer = await this.cameraService.snapshot(id);
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Content-Length': buffer.length,
+    });
+    return new StreamableFile(buffer);
   }
 }

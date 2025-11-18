@@ -267,4 +267,62 @@ export class CameraService {
       });
     });
   }
+
+  // Capture a snapshot (JPEG) at current time
+  async snapshot(id: string) {
+    const cam = await this.findOne(id);
+    const rtsp = cam.rtspUrl || this.buildRtsp(cam, cam.channel);
+    const timeoutMs = parseInt(process.env.CAMERA_SNAPSHOT_TIMEOUT_MS || '7000', 10);
+
+    return new Promise<Buffer>((resolve, reject) => {
+      const args = [
+        '-hide_banner',
+        '-loglevel', 'error',
+        '-rtsp_transport', 'tcp',
+        '-timeout', String(timeoutMs * 1000),
+        '-i', rtsp,
+        '-frames:v', '1',
+        '-q:v', process.env.CAMERA_SNAPSHOT_QUALITY || '2',
+        '-f', 'image2',
+        '-vcodec', 'mjpeg',
+        '-',
+      ];
+
+      const child = spawn(ffmpegPath || 'ffmpeg', args, {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      const chunks: Buffer[] = [];
+      let stderr = '';
+      let settled = false;
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try { child.kill('SIGKILL'); } catch {}
+          reject(new BadRequestException('Snapshot timeout'));
+        }
+      }, timeoutMs + 500);
+
+      child.stdout?.on('data', (chunk) => chunks.push(chunk as Buffer));
+      child.stderr?.on('data', (d) => { stderr += d.toString(); });
+      child.on('error', (err) => {
+        if (settled) return;
+        clearTimeout(timer);
+        settled = true;
+        reject(err);
+      });
+      child.on('close', (code) => {
+        if (settled) return;
+        clearTimeout(timer);
+        settled = true;
+        if (code === 0 && chunks.length) {
+          resolve(Buffer.concat(chunks));
+        } else {
+          reject(new BadRequestException(stderr || `Snapshot failed (code ${code})`));
+        }
+      });
+    });
+  }
 }
