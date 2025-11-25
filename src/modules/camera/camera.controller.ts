@@ -165,8 +165,29 @@ export class CameraController {
   // Chụp snapshot hiện tại của camera
   @Get(':id/snapshot')
   @Roles('ADMIN')
-  async snapshot(@Param('id') id: string, @Res({ passthrough: true }) res: Response) {
+  async snapshot(
+    @Param('id') id: string,
+    @Query('format') format: string,
+    @Res({ passthrough: true }) res: Response
+  ) {
     const buffer = await this.cameraService.snapshot(id);
+    
+    // Nếu request base64, trả JSON
+    if (format === 'base64') {
+      res.set({
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      });
+      return {
+        format: 'base64',
+        contentType: 'image/jpeg',
+        data: buffer.toString('base64'),
+        size: buffer.length,
+        timestamp: new Date().toISOString(),
+      };
+    }
+    
+    // Mặc định: trả binary JPEG stream
     res.set({
       'Content-Type': 'image/jpeg',
       'Cache-Control': 'no-store, no-cache, must-revalidate',
